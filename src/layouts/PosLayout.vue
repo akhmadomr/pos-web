@@ -2,17 +2,19 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
-import { useAuthStore } from '@/stores/auth.store'
-import { closeShift } from '@/api/shifts'
 import AppButton from '@/components/common/AppButton.vue'
+import CloseShiftModal from '@/components/shift/CloseShiftModal.vue'
+import ShiftSummary from '@/components/shift/ShiftSummary.vue'
+import { useAuthStore } from '@/stores/auth.store'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
 const now = ref(dayjs())
+const showCloseModal = ref(false)
+const shiftSummaryRef = ref(null)
 let clockTimer = null
-const closingShift = ref(false)
 
 const clockLabel = computed(() => now.value.format('HH:mm:ss'))
 const dateLabel = computed(() => now.value.format('dddd, DD MMM YYYY'))
@@ -25,28 +27,13 @@ const navItems = [
 
 const isActive = (path) => route.path === path
 
-const handleCloseShift = async () => {
-  const input = window.prompt('Masukkan jumlah kas fisik saat tutup shift:', '0')
-  if (input === null) return
-
-  const closingCash = Number(input.replace(/[^\d]/g, ''))
-  if (Number.isNaN(closingCash)) return
-
-  closingShift.value = true
-  try {
-    await closeShift({ closing_cash: closingCash })
-    authStore.setShift(null)
-    router.push({ name: 'shift-open' })
-  } catch (err) {
-    window.alert(err.response?.data?.message || 'Gagal menutup shift.')
-  } finally {
-    closingShift.value = false
-  }
-}
-
 const handleLogout = async () => {
   await authStore.logout()
   router.push({ name: 'login' })
+}
+
+const onShiftClosed = () => {
+  shiftSummaryRef.value?.refresh?.()
 }
 
 onMounted(() => {
@@ -63,8 +50,8 @@ onUnmounted(() => {
 <template>
   <div class="flex min-h-screen flex-col bg-slate-100">
     <header class="sticky top-0 z-50 border-b border-slate-200 bg-white shadow-sm">
-      <div class="flex flex-wrap items-center justify-between gap-4 px-4 py-3 lg:px-6">
-        <div class="flex items-center gap-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 lg:px-6">
+        <div class="flex items-center gap-3">
           <div
             class="flex h-11 w-11 items-center justify-center rounded-2xl bg-merchant-primary text-lg font-black text-white"
           >
@@ -75,6 +62,8 @@ onUnmounted(() => {
             <p class="text-xs text-slate-500">{{ authStore.outletName }}</p>
           </div>
         </div>
+
+        <ShiftSummary ref="shiftSummaryRef" />
 
         <div class="text-right">
           <p class="font-mono text-xl font-black tabular-nums text-slate-900">{{ clockLabel }}</p>
@@ -89,7 +78,7 @@ onUnmounted(() => {
             Shift Aktif
           </span>
 
-          <AppButton variant="secondary" :loading="closingShift" @click="handleCloseShift">
+          <AppButton variant="secondary" @click="showCloseModal = true">
             <i class="pi pi-sign-out" />
             Tutup Shift
           </AppButton>
@@ -105,12 +94,12 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <nav class="flex gap-1 border-t border-slate-100 px-4 lg:px-6">
+      <nav class="flex gap-1 overflow-x-auto border-t border-slate-100 px-4 lg:px-6">
         <router-link
           v-for="item in navItems"
           :key="item.path"
           :to="item.path"
-          class="flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition"
+          class="flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition"
           :class="
             isActive(item.path)
               ? 'border-merchant-primary text-merchant-primary'
@@ -126,5 +115,7 @@ onUnmounted(() => {
     <main class="flex-1 p-4 lg:p-6">
       <router-view />
     </main>
+
+    <CloseShiftModal :show="showCloseModal" @close="showCloseModal = false" @closed="onShiftClosed" />
   </div>
 </template>

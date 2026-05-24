@@ -1,52 +1,19 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import AppAlert from '@/components/common/AppAlert.vue'
+import dayjs from 'dayjs'
 import AppButton from '@/components/common/AppButton.vue'
-import { openShift } from '@/api/shifts'
+import OpenShiftModal from '@/components/shift/OpenShiftModal.vue'
 import { useAuthStore } from '@/stores/auth.store'
-import { formatRupiah } from '@/utils/currency'
 
 const router = useRouter()
 const authStore = useAuthStore()
 
-const loading = ref(false)
-const error = ref('')
-
-const form = reactive({
-  opening_cash: '',
-})
-
+const todayLabel = computed(() => dayjs().format('dddd, DD MMMM YYYY'))
 const outletLabel = computed(() => authStore.user?.outlet?.name ?? `Outlet #${authStore.user?.outlet_id}`)
 
-const handleOpenShift = async () => {
-  error.value = ''
-
-  const outletId = authStore.user?.outlet_id
-  if (!outletId) {
-    error.value = 'Akun tidak terhubung ke outlet. Hubungi administrator.'
-    return
-  }
-
-  const openingCash = Number(String(form.opening_cash).replace(/[^\d]/g, ''))
-  if (Number.isNaN(openingCash) || openingCash < 0) {
-    error.value = 'Saldo kas awal tidak valid.'
-    return
-  }
-
-  loading.value = true
-  try {
-    const shift = await openShift({
-      outlet_id: outletId,
-      opening_cash: openingCash,
-    })
-    authStore.setShift(shift)
-    router.push({ name: 'pos' })
-  } catch (err) {
-    error.value = err.data?.message || err.response?.data?.message || 'Gagal membuka shift.'
-  } finally {
-    loading.value = false
-  }
+const handleOpened = () => {
+  router.push({ name: 'pos' })
 }
 
 const handleLogout = async () => {
@@ -56,49 +23,49 @@ const handleLogout = async () => {
 </script>
 
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-slate-100 p-4">
-    <div class="glass-card w-full max-w-lg p-8">
-      <div class="mb-8 text-center">
-        <div
-          class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-merchant-primary text-2xl font-black text-white"
-        >
-          K
-        </div>
-        <h1 class="text-2xl font-black text-slate-900">Buka Shift</h1>
-        <p class="mt-2 text-sm text-slate-500">
-          Halo {{ authStore.cashierName }}, siap melayani di <strong>{{ outletLabel }}</strong>
-        </p>
-      </div>
-
-      <AppAlert v-if="error" type="error" :message="error" class="mb-6" dismissible @dismiss="error = ''" />
-
-      <form class="space-y-6" @submit.prevent="handleOpenShift">
-        <div>
-          <label class="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-400">
-            Saldo Kas Awal
-          </label>
-          <div class="relative">
-            <span class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">Rp</span>
-            <input
-              v-model="form.opening_cash"
-              type="number"
-              min="0"
-              required
-              placeholder="0"
-              class="w-full rounded-2xl border border-slate-200 py-4 pl-12 pr-4 text-2xl font-black text-slate-900 focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
-            />
+  <div class="min-h-screen bg-gradient-to-br from-merchant-accent via-white to-slate-100">
+    <div class="mx-auto flex min-h-screen max-w-6xl flex-col px-4 py-6 lg:px-8 lg:py-10">
+      <header class="mb-8 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-4">
+          <div
+            class="flex h-14 w-14 items-center justify-center rounded-2xl bg-merchant-primary text-2xl font-black text-white shadow-lg shadow-merchant-primary/30"
+          >
+            K
           </div>
-          <p v-if="form.opening_cash" class="mt-2 text-sm text-slate-500">
-            {{ formatRupiah(form.opening_cash) }}
-          </p>
+          <div>
+            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Kopirex POS</p>
+            <h1 class="text-2xl font-black text-slate-900">Buka Shift</h1>
+          </div>
         </div>
-
-        <AppButton type="submit" class="w-full py-4 text-base" :loading="loading">
-          Buka Shift & Mulai Kasir
+        <AppButton variant="secondary" @click="handleLogout">
+          <i class="pi pi-power-off" />
+          Keluar
         </AppButton>
+      </header>
 
-        <AppButton type="button" variant="secondary" class="w-full" @click="handleLogout">Keluar</AppButton>
-      </form>
+      <div class="grid flex-1 gap-8 lg:grid-cols-2 lg:items-start">
+        <section class="glass-card flex flex-col justify-center p-8 lg:p-10">
+          <p class="text-xs font-bold uppercase tracking-[0.2em] text-merchant-primary">Siap melayani</p>
+          <h2 class="mt-3 text-3xl font-black text-slate-900">{{ authStore.cashierName }}</h2>
+          <p class="mt-2 text-lg text-slate-600">{{ outletLabel }}</p>
+
+          <div class="mt-8 space-y-4 border-t border-slate-100 pt-8">
+            <div class="flex items-center gap-3 text-slate-600">
+              <i class="pi pi-calendar text-merchant-primary" />
+              <span class="font-semibold capitalize">{{ todayLabel }}</span>
+            </div>
+            <div class="flex items-center gap-3 text-slate-600">
+              <i class="pi pi-info-circle text-merchant-primary" />
+              <span class="text-sm">Masukkan saldo kas awal sebelum memulai transaksi.</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="glass-card p-6 lg:p-8">
+          <h3 class="mb-6 text-lg font-bold text-slate-900">Saldo Kas Awal</h3>
+          <OpenShiftModal @opened="handleOpened" />
+        </section>
+      </div>
     </div>
   </div>
 </template>
