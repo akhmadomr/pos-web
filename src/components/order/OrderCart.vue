@@ -47,10 +47,6 @@ const setOrderType = (type) => {
 
 const handleCheckout = () => {
   if (!cartStore.items.length) return
-  if (cartStore.orderType === 'dine_in' && !cartStore.tableId) {
-    window.alert('Pilih meja untuk dine in.')
-    return
-  }
   emit('checkout')
 }
 </script>

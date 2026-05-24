@@ -1,11 +1,15 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import AppAlert from '@/components/common/AppAlert.vue'
+import PaymentModal from '@/components/payment/PaymentModal.vue'
+import PaymentSuccess from '@/components/payment/PaymentSuccess.vue'
 import CategoryTabs from '@/components/product/CategoryTabs.vue'
 import OrderCart from '@/components/order/OrderCart.vue'
 import ProductGrid from '@/components/product/ProductGrid.vue'
 import ProductSearch from '@/components/product/ProductSearch.vue'
 import VariantModal from '@/components/product/VariantModal.vue'
+import { usePrinter } from '@/composables/usePrinter'
+import { usePayment } from '@/composables/usePayment'
 import { useAuthStore } from '@/stores/auth.store'
 import { useCartStore } from '@/stores/cart.store'
 import { useProductStore } from '@/stores/product.store'
@@ -13,12 +17,23 @@ import { useProductStore } from '@/stores/product.store'
 const authStore = useAuthStore()
 const productStore = useProductStore()
 const cartStore = useCartStore()
+const payment = usePayment()
+const printer = usePrinter()
 
 const selectedCategory = ref(null)
 const searchQuery = ref('')
 const activePanel = ref('products')
 const showVariantModal = ref(false)
 const selectedProduct = ref(null)
+const showPaymentModal = ref(false)
+const showPaymentSuccess = ref(false)
+
+const successPayload = ref({
+  orderNumber: '',
+  total: 0,
+  changeAmount: 0,
+  paymentMethod: '',
+})
 
 const filteredProducts = computed(() => {
   let list = productStore.products
@@ -64,7 +79,32 @@ const handleVariantAdd = ({ product, variantSelections, addonIds, quantity, note
 }
 
 const handleCheckout = () => {
-  window.alert('Alur pembayaran akan diimplementasikan pada Task 4.4.')
+  if (!cartStore.items.length) return
+  showPaymentModal.value = true
+}
+
+const handlePaid = async (payload) => {
+  showPaymentModal.value = false
+
+  if (payload.receipt_data) {
+    await printer.printReceipt(payload.receipt_data)
+  }
+
+  successPayload.value = {
+    orderNumber: payload.receipt_data?.order_number ?? payload.order?.order_number ?? '',
+    total: payload.receipt_data?.total_amount ?? cartStore.total,
+    changeAmount: payload.change_amount ?? 0,
+    paymentMethod: payment.paymentMethod?.value ?? '',
+  }
+
+  showPaymentSuccess.value = true
+}
+
+const handlePaymentDone = () => {
+  showPaymentSuccess.value = false
+  cartStore.clearCart()
+  payment.resetPayment()
+  activePanel.value = 'products'
 }
 
 onMounted(() => {
@@ -122,10 +162,7 @@ onMounted(() => {
         class="flex min-h-0 flex-col gap-4 lg:col-span-3"
         :class="{ 'hidden lg:flex': activePanel !== 'products' }"
       >
-        <CategoryTabs
-          v-model="selectedCategory"
-          :categories="productStore.categories"
-        />
+        <CategoryTabs v-model="selectedCategory" :categories="productStore.categories" />
         <ProductSearch v-model="searchQuery" />
         <div class="min-h-0 flex-1 overflow-y-auto pr-1">
           <ProductGrid
@@ -136,10 +173,7 @@ onMounted(() => {
         </div>
       </section>
 
-      <section
-        class="min-h-0 lg:col-span-2"
-        :class="{ 'hidden lg:block': activePanel !== 'cart' }"
-      >
+      <section class="min-h-0 lg:col-span-2" :class="{ 'hidden lg:block': activePanel !== 'cart' }">
         <OrderCart class="h-full" @checkout="handleCheckout" />
       </section>
     </div>
@@ -149,6 +183,17 @@ onMounted(() => {
       :product="selectedProduct"
       @close="showVariantModal = false"
       @add="handleVariantAdd"
+    />
+
+    <PaymentModal :show="showPaymentModal" @close="showPaymentModal = false" @paid="handlePaid" />
+
+    <PaymentSuccess
+      :show="showPaymentSuccess"
+      :order-number="successPayload.orderNumber"
+      :total="successPayload.total"
+      :change-amount="successPayload.changeAmount"
+      :payment-method="successPayload.paymentMethod"
+      @done="handlePaymentDone"
     />
   </div>
 </template>
