@@ -10,10 +10,12 @@ export const useOfflineStore = defineStore('offline', () => {
   const hydrated = ref(false)
 
   async function persist() {
-    await idbSet(STORAGE_KEY, {
+    // Gunakan JSON.parse(JSON.stringify(...)) agar Vue Proxy ter-serialize
+    // ke plain object sebelum masuk ke IndexedDB (structured clone tidak support Proxy)
+    await idbSet(STORAGE_KEY, JSON.parse(JSON.stringify({
       isOffline: isOffline.value,
       pendingOrders: pendingOrders.value,
-    })
+    })))
   }
 
   async function hydrate() {

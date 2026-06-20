@@ -1,4 +1,3 @@
-throw new Error('SHIFTS FILE LOADED')
 import client from './client'
 
 export async function fetchCurrentShift(outletId) {

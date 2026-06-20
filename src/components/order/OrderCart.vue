@@ -1,48 +1,16 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
 import AppButton from '@/components/common/AppButton.vue'
 import CartItem from '@/components/order/CartItem.vue'
 import OrderSummary from '@/components/order/OrderSummary.vue'
-import { fetchTables } from '@/api/tables'
-import { useAuthStore } from '@/stores/auth.store'
 import { useCartStore } from '@/stores/cart.store'
 
 const emit = defineEmits(['checkout'])
 
-const authStore = useAuthStore()
 const cartStore = useCartStore()
 
-const tables = ref([])
-const loadingTables = ref(false)
-
-const selectedTableLabel = computed(() => {
-  const table = tables.value.find((t) => t.id === cartStore.tableId)
-  if (!table) return 'Pilih meja'
-  return table.name ? `${table.table_number} — ${table.name}` : table.table_number
-})
-
-const loadTables = async () => {
-  loadingTables.value = true
-  try {
-    tables.value = await fetchTables(authStore.outletId)
-  } catch {
-    tables.value = []
-  } finally {
-    loadingTables.value = false
-  }
-}
-
-onMounted(() => {
-  if (cartStore.orderType === 'dine_in') {
-    loadTables()
-  }
-})
-
-const setOrderType = (type) => {
-  cartStore.setOrderType(type)
-  if (type === 'dine_in' && !tables.value.length) {
-    loadTables()
-  }
+// Pastikan selalu take_away (dine-in belum dalam scope)
+if (cartStore.orderType !== 'take_away') {
+  cartStore.setOrderType('take_away')
 }
 
 const handleCheckout = () => {
@@ -57,49 +25,14 @@ const handleCheckout = () => {
       <h2 class="text-lg font-black text-slate-900">Keranjang</h2>
       <p class="text-xs text-slate-500">{{ cartStore.itemCount }} item</p>
 
-      <div class="mt-4 flex gap-2">
-        <button
-          type="button"
-          class="flex-1 rounded-xl py-2.5 text-xs font-bold uppercase tracking-wide transition"
-          :class="
-            cartStore.orderType === 'dine_in'
-              ? 'bg-merchant-primary text-white'
-              : 'bg-slate-100 text-slate-600'
-          "
-          @click="setOrderType('dine_in')"
+      <!-- Order type: hanya Take Away yang aktif untuk saat ini -->
+      <div class="mt-4">
+        <div
+          class="flex items-center gap-2 rounded-xl bg-merchant-primary/10 px-4 py-2.5"
         >
-          <i class="pi pi-home mr-1" />
-          Dine In
-        </button>
-        <button
-          type="button"
-          class="flex-1 rounded-xl py-2.5 text-xs font-bold uppercase tracking-wide transition"
-          :class="
-            cartStore.orderType === 'take_away'
-              ? 'bg-merchant-primary text-white'
-              : 'bg-slate-100 text-slate-600'
-          "
-          @click="setOrderType('take_away')"
-        >
-          <i class="pi pi-shopping-bag mr-1" />
-          Take Away
-        </button>
-      </div>
-
-      <div v-if="cartStore.orderType === 'dine_in'" class="mt-3">
-        <label class="mb-1 block text-[10px] font-bold uppercase text-slate-400">Meja</label>
-        <select
-          :value="cartStore.tableId ?? ''"
-          class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold focus:border-merchant-primary focus:outline-none"
-          :disabled="loadingTables"
-          @change="cartStore.setTable($event.target.value ? Number($event.target.value) : null)"
-        >
-          <option value="">{{ loadingTables ? 'Memuat meja...' : selectedTableLabel }}</option>
-          <option v-for="table in tables" :key="table.id" :value="table.id">
-            {{ table.table_number }}{{ table.name ? ` — ${table.name}` : '' }}
-            ({{ table.capacity }} org)
-          </option>
-        </select>
+          <i class="pi pi-shopping-bag text-merchant-primary" />
+          <span class="text-xs font-bold uppercase tracking-wide text-merchant-primary">Take Away</span>
+        </div>
       </div>
     </div>
 

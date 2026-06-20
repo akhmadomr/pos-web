@@ -32,7 +32,9 @@ export const useProductStore = defineStore('product', () => {
     loading.value = true
     error.value = null
     try {
-      products.value = await fetchPosProducts(outletId)
+      const result = await fetchPosProducts(outletId)
+      // Guard: pastikan selalu array meskipun API return null/object
+      products.value = Array.isArray(result) ? result : []
       lastFetchedAt.value = new Date().toISOString()
     } catch (err) {
       error.value = err.response?.data?.message || 'Gagal memuat produk.'
