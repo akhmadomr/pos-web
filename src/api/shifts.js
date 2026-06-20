@@ -1,6 +1,8 @@
+throw new Error('SHIFTS FILE LOADED')
 import client from './client'
 
 export async function fetchCurrentShift(outletId) {
+  console.log(client.defaults.baseURL)
   const params = outletId ? { outlet_id: outletId } : undefined
   const { data } = await client.get('/pos/shifts/current', { params })
   return data.data

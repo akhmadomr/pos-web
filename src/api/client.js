@@ -8,14 +8,18 @@ function withOfflineStore(callback) {
   })
 }
 
+console.log('ENV:', import.meta.env.VITE_API_URL)
+
 const client = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api',
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',
   },
   timeout: 30000,
 })
+
+console.log('BASE URL:', client.defaults.baseURL)
 
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem(TOKEN_KEY)
