@@ -9,6 +9,7 @@ import {
   calculateItemUnitPrice,
   itemFingerprint,
 } from '@/utils/order'
+import { useSettingsStore } from './settings.store'
 
 const CART_KEY = 'kopirex-pos-cart'
 
@@ -71,9 +72,16 @@ export const useCartStore = defineStore('cart', () => {
 
   const taxableAmount = computed(() => Math.max(0, subtotal.value - discountAmount.value))
 
-  const taxAmount = computed(() => 0)
+  const settingsStore = useSettingsStore()
 
-  const serviceCharge = computed(() => 0)
+  const taxAmount = computed(() => {
+    if (settingsStore.tax.enabled === '1') {
+      return taxableAmount.value * (Number(settingsStore.tax.rate) / 100)
+    }
+    return 0
+  })
+
+  const serviceCharge = computed(() => 0) // Optional for future
 
   const total = computed(() => taxableAmount.value + taxAmount.value + serviceCharge.value)
 

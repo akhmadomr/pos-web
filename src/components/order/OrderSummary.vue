@@ -4,6 +4,7 @@ import { formatRupiah } from '@/utils/currency'
 import { SERVICE_CHARGE_RATE, TAX_RATE } from '@/utils/order'
 import VoucherInput from '@/components/order/VoucherInput.vue'
 import CustomerSelect from '@/components/order/CustomerSelect.vue'
+import { useSettingsStore } from '@/stores/settings.store'
 
 defineProps({
   showExtras: {
@@ -13,6 +14,7 @@ defineProps({
 })
 
 const cartStore = useCartStore()
+const settingsStore = useSettingsStore()
 </script>
 
 <template>
@@ -34,6 +36,11 @@ const cartStore = useCartStore()
         <span class="font-semibold">−{{ formatRupiah(cartStore.discountAmount) }}</span>
       </div>
 
+      <div v-if="cartStore.taxAmount > 0" class="flex justify-between text-slate-600">
+        <span>PPN ({{ settingsStore.tax.rate }}%)</span>
+        <span class="font-semibold text-slate-900">{{ formatRupiah(cartStore.taxAmount) }}</span>
+      </div>
+
       <div v-if="SERVICE_CHARGE_RATE > 0" class="flex justify-between text-slate-600">
         <span>Service</span>
         <span class="font-semibold text-slate-900">{{ formatRupiah(cartStore.serviceCharge) }}</span>
@@ -42,7 +49,7 @@ const cartStore = useCartStore()
       <div class="flex items-end justify-between border-t border-slate-200 pt-3 text-base">
         <div>
           <span class="font-bold text-slate-900">Total</span>
-          <p class="text-[10px] font-medium text-slate-400">Sudah termasuk PPN 11%</p>
+          <p v-if="settingsStore.tax.enabled === '0'" class="text-[10px] font-medium text-slate-400">Sudah termasuk PPN</p>
         </div>
         <span class="font-black text-merchant-primary">{{ formatRupiah(cartStore.total) }}</span>
       </div>

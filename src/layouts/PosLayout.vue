@@ -7,11 +7,13 @@ import CloseShiftModal from '@/components/shift/CloseShiftModal.vue'
 import ShiftSummary from '@/components/shift/ShiftSummary.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { usePrinter } from '@/composables/usePrinter'
+import { useSettingsStore } from '@/stores/settings.store'
 import logoUrl from '@/assets/kopirexnew.png'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const settingsStore = useSettingsStore()
 const printer = usePrinter()
 
 const now = ref(dayjs())
@@ -40,6 +42,7 @@ const onShiftClosed = () => {
 }
 
 onMounted(() => {
+  settingsStore.load()
   clockTimer = window.setInterval(() => {
     now.value = dayjs()
   }, 1000)

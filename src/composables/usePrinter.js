@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { generateReceiptHTML, buildEscPosPayload } from '@/utils/receipt'
+import { useSettingsStore } from '@/stores/settings.store'
 
 const PRINT_SERVER = import.meta.env.VITE_PRINT_SERVER_URL || 'http://localhost:7878'
 
@@ -34,10 +35,15 @@ export function usePrinter() {
 
     isPrinting.value = true
     lastError.value = null
+    const settingsStore = useSettingsStore()
+    const settings = {
+      tax: settingsStore.tax,
+      receipt: settingsStore.receipt
+    }
 
     try {
       // Coba ESC/POS server terlebih dahulu
-      const escPosPayload = buildEscPosPayload(receiptData)
+      const escPosPayload = buildEscPosPayload(receiptData, settings)
       const response = await fetch(`${PRINT_SERVER}/print`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -69,7 +75,9 @@ export function usePrinter() {
    */
   function printViaBrowser(receiptData) {
     try {
-      const html = generateReceiptHTML(receiptData)
+      const settingsStore = useSettingsStore()
+      const settings = { tax: settingsStore.tax, receipt: settingsStore.receipt }
+      const html = generateReceiptHTML(receiptData, settings)
       const printWindow = window.open('', '_blank', 'width=420,height=700,scrollbars=yes')
 
       if (!printWindow) {
