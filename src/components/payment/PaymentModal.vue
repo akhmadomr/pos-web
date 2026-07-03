@@ -45,16 +45,24 @@ const cashReceivedNum = computed(() =>
   Number(String(payment.cashReceived.value).replace(/\D/g, '') || 0),
 )
 
-const canConfirm = computed(() => {
-  if (payment.isProcessing.value) return false
-  if (!payment.paymentMethod.value) return false
+// ─── BUG FIX: akses .value dari ref ───────────────────────────────────────────
+const currentMethod = computed(() => payment.paymentMethod.value)
+const hasError = computed(() => !!payment.error.value)
+const errorMessage = computed(() => payment.error.value)
+const isProcessing = computed(() => payment.isProcessing.value)
 
-  if (payment.paymentMethod.value === 'cash') {
+const canConfirm = computed(() => {
+  if (isProcessing.value) return false
+  if (!currentMethod.value) return false
+  if (currentMethod.value === 'cash') {
     return cashReceivedNum.value >= cartStore.total
   }
-
   return true
 })
+
+// Tombol konfirmasi di footer muncul untuk cash;
+// QRIS & Transfer punya tombol confirm di dalam komponen masing-masing
+const showFooterConfirm = computed(() => step.value === 3 && currentMethod.value === 'cash')
 
 const loadTables = async () => {
   loadingTables.value = true
@@ -128,12 +136,12 @@ const handleConfirm = async () => {
     )
 
     const amount =
-      payment.paymentMethod.value === 'cash' ? cashReceivedNum.value : cartStore.total
+      currentMethod.value === 'cash' ? cashReceivedNum.value : cartStore.total
 
     const result = await payment.processPayment(
       order.id,
       {
-        payment_method: payment.paymentMethod.value,
+        payment_method: currentMethod.value,
         amount,
         reference_number: payment.referenceNumber.value || null,
       },
@@ -147,7 +155,7 @@ const handleConfirm = async () => {
       change_amount: result.change_amount ?? 0,
     })
   } catch {
-    // error set in payment.error
+    // error sudah di-set oleh payment.error di usePayment
   }
 }
 </script>
@@ -183,20 +191,21 @@ const handleConfirm = async () => {
           </header>
 
           <div class="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6">
-            <AppAlert v-if="payment.error" type="error" :message="payment.error" class="mb-4" />
+            <!-- Error hanya tampil saat ada pesan error aktual -->
+            <AppAlert v-if="hasError" type="error" :message="errorMessage" class="mb-4" />
 
-            <!-- Step 1: Order setup -->
+            <!-- Step 1: Order type -->
             <div v-if="step === 1" class="space-y-5">
-              <p class="text-sm text-slate-500">Pastikan tipe order dan meja sudah benar.</p>
+              <p class="text-sm text-slate-500">Pilih tipe order untuk melanjutkan.</p>
 
               <div class="flex gap-2">
                 <button
                   type="button"
-                  class="flex-1 rounded-xl py-3 text-sm font-bold"
+                  class="flex-1 rounded-xl py-3 text-sm font-bold transition"
                   :class="
                     cartStore.orderType === 'dine_in'
-                      ? 'bg-merchant-primary text-white'
-                      : 'bg-slate-100 text-slate-600'
+                      ? 'bg-merchant-primary text-white shadow-lg'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   "
                   @click="setOrderType('dine_in')"
                 >
@@ -204,11 +213,11 @@ const handleConfirm = async () => {
                 </button>
                 <button
                   type="button"
-                  class="flex-1 rounded-xl py-3 text-sm font-bold"
+                  class="flex-1 rounded-xl py-3 text-sm font-bold transition"
                   :class="
                     cartStore.orderType === 'take_away'
-                      ? 'bg-merchant-primary text-white'
-                      : 'bg-slate-100 text-slate-600'
+                      ? 'bg-merchant-primary text-white shadow-lg'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   "
                   @click="setOrderType('take_away')"
                 >
@@ -217,13 +226,13 @@ const handleConfirm = async () => {
               </div>
 
               <div v-if="cartStore.orderType === 'dine_in'">
-                <label class="mb-2 block text-xs font-bold uppercase text-slate-400">Meja</label>
+                <label class="mb-2 block text-xs font-bold uppercase text-slate-400">Pilih Meja</label>
                 <select
                   :value="cartStore.tableId ?? ''"
                   class="w-full rounded-xl border border-slate-200 px-4 py-3 font-semibold"
                   @change="cartStore.setTable($event.target.value ? Number($event.target.value) : null)"
                 >
-                  <option value="">Pilih meja</option>
+                  <option value="">Pilih meja...</option>
                   <option v-for="table in tables" :key="table.id" :value="table.id">
                     {{ table.table_number }}{{ table.name ? ` — ${table.name}` : '' }}
                   </option>
@@ -231,9 +240,10 @@ const handleConfirm = async () => {
               </div>
             </div>
 
-            <!-- Step 2: Summary + method -->
+            <!-- Step 2: Summary + pilih metode bayar -->
             <div v-else-if="step === 2" class="space-y-5">
-              <div class="max-h-40 space-y-2 overflow-y-auto rounded-2xl bg-slate-50 p-3">
+              <!-- Ringkasan item -->
+              <div class="max-h-44 space-y-2 overflow-y-auto rounded-2xl bg-slate-50 p-3">
                 <div
                   v-for="item in cartStore.items"
                   :key="item.id"
@@ -244,17 +254,15 @@ const handleConfirm = async () => {
                     <span v-if="item.variant_label" class="text-slate-400">({{ item.variant_label }})</span>
                   </span>
                   <span class="font-bold text-slate-900">
-                    {{
-                      formatRupiah(
-                        (Number(item.unit_price) + Number(item.addons_price)) * item.quantity,
-                      )
-                    }}
+                    {{ formatRupiah((Number(item.unit_price) + Number(item.addons_price)) * item.quantity) }}
                   </span>
                 </div>
               </div>
 
+              <!-- Total (tanpa baris pajak terpisah) -->
               <OrderSummary :show-extras="false" />
 
+              <!-- Pilih metode bayar -->
               <div>
                 <p class="mb-3 text-xs font-bold uppercase text-slate-400">Metode Pembayaran</p>
                 <div class="grid gap-3 sm:grid-cols-3">
@@ -262,7 +270,7 @@ const handleConfirm = async () => {
                     v-for="method in paymentMethods"
                     :key="method.id"
                     type="button"
-                    class="flex min-h-[80px] flex-col items-center justify-center gap-2 rounded-2xl text-white shadow-lg transition active:scale-95"
+                    class="flex min-h-[90px] flex-col items-center justify-center gap-2 rounded-2xl text-white shadow-lg transition active:scale-95 hover:opacity-90"
                     :class="method.color"
                     @click="selectMethod(method.id)"
                   >
@@ -273,44 +281,46 @@ const handleConfirm = async () => {
               </div>
             </div>
 
-            <!-- Step 3: Payment detail -->
+            <!-- Step 3: Input pembayaran -->
             <div v-else class="space-y-4">
-              <button
-                type="button"
-                class="flex items-center gap-2 text-sm font-semibold text-slate-500"
-                @click="prevStep"
-              >
-                <i class="pi pi-arrow-left" />
-                Ganti metode
-              </button>
-
               <CashPayment
-                v-if="payment.paymentMethod === 'cash'"
-                v-model="payment.cashReceived"
+                v-if="currentMethod === 'cash'"
+                v-model="payment.cashReceived.value"
                 :total="cartStore.total"
               />
 
               <QrisPayment
-                v-else-if="payment.paymentMethod === 'qris'"
+                v-else-if="currentMethod === 'qris'"
                 :total="cartStore.total"
+                :loading="isProcessing"
                 @confirm="handleConfirm"
               />
 
               <TransferPayment
-                v-else-if="payment.paymentMethod === 'transfer'"
-                v-model="payment.referenceNumber"
+                v-else-if="currentMethod === 'transfer'"
+                v-model="payment.referenceNumber.value"
                 :total="cartStore.total"
+                :loading="isProcessing"
                 @confirm="handleConfirm"
               />
             </div>
           </div>
 
+          <!-- Footer dengan tombol aksi -->
           <footer class="shrink-0 border-t border-slate-100 bg-slate-50/80 p-4 lg:px-6">
             <div class="flex gap-3">
-              <AppButton v-if="step > 1 && step < 3" variant="secondary" class="flex-1" @click="prevStep">
-                Kembali
+              <!-- Kembali: step 2 kembali ke 1, step 3 kembali ke 2 (ubah metode) -->
+              <AppButton
+                v-if="step > 1"
+                variant="secondary"
+                class="flex-1"
+                @click="prevStep"
+              >
+                <i class="pi pi-arrow-left" />
+                {{ step === 3 ? 'Ganti Metode' : 'Kembali' }}
               </AppButton>
 
+              <!-- Step 1: Lanjut ke pilih metode -->
               <AppButton
                 v-if="step === 1"
                 class="flex-1"
@@ -318,17 +328,19 @@ const handleConfirm = async () => {
                 @click="nextStep"
               >
                 Lanjut
+                <i class="pi pi-arrow-right" />
               </AppButton>
 
+              <!-- Step 3, metode cash: tombol konfirmasi di footer -->
               <AppButton
-                v-if="step === 3 && payment.paymentMethod === 'cash'"
+                v-if="showFooterConfirm"
                 class="flex-1 py-4"
-                :loading="payment.isProcessing"
+                :loading="isProcessing"
                 :disabled="!canConfirm"
                 @click="handleConfirm"
               >
                 <i class="pi pi-check" />
-                Konfirmasi Bayar
+                Konfirmasi Bayar — {{ formatRupiah(cartStore.total) }}
               </AppButton>
             </div>
           </footer>

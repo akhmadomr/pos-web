@@ -1,4 +1,4 @@
-export const TAX_RATE = Number(import.meta.env.VITE_TAX_RATE ?? 0.11)
+export const TAX_RATE = Number(import.meta.env.VITE_TAX_RATE ?? 0)
 export const SERVICE_CHARGE_RATE = Number(import.meta.env.VITE_SERVICE_CHARGE ?? 0)
 
 export function groupVariantsByType(variants = []) {

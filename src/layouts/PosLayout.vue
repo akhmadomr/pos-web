@@ -6,10 +6,13 @@ import AppButton from '@/components/common/AppButton.vue'
 import CloseShiftModal from '@/components/shift/CloseShiftModal.vue'
 import ShiftSummary from '@/components/shift/ShiftSummary.vue'
 import { useAuthStore } from '@/stores/auth.store'
+import { usePrinter } from '@/composables/usePrinter'
+import logoUrl from '@/assets/kopirexnew.png'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const printer = usePrinter()
 
 const now = ref(dayjs())
 const showCloseModal = ref(false)
@@ -52,11 +55,7 @@ onUnmounted(() => {
     <header class="sticky top-0 z-50 border-b border-slate-200 bg-white shadow-sm">
       <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 lg:px-6">
         <div class="flex items-center gap-3">
-          <div
-            class="flex h-11 w-11 items-center justify-center rounded-2xl bg-merchant-primary text-lg font-black text-white"
-          >
-            K
-          </div>
+          <img :src="logoUrl" alt="Kopirex" class="h-10 w-auto" />
           <div>
             <p class="text-sm font-bold text-slate-900">{{ authStore.cashierName }}</p>
             <p class="text-xs text-slate-500">{{ authStore.outletName }}</p>
@@ -71,6 +70,20 @@ onUnmounted(() => {
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
+          <!-- Printer status indicator -->
+          <button
+            type="button"
+            :title="printer.printerOnline.value ? 'Printer Online' : 'Printer Offline (browser print)'"
+            class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition"
+            :class="printer.printerOnline.value
+              ? 'bg-emerald-50 text-emerald-700'
+              : 'bg-slate-100 text-slate-500'"
+            @click="printer.checkPrinterStatus()"
+          >
+            <i class="pi pi-print text-xs" />
+            {{ printer.printerOnline.value ? 'Printer Online' : 'Browser Print' }}
+          </button>
+
           <span
             class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700"
           >

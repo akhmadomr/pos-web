@@ -5,6 +5,7 @@ import dayjs from 'dayjs'
 import AppButton from '@/components/common/AppButton.vue'
 import OpenShiftModal from '@/components/shift/OpenShiftModal.vue'
 import { useAuthStore } from '@/stores/auth.store'
+import logoUrl from '@/assets/kopirexnew.png'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -27,11 +28,7 @@ const handleLogout = async () => {
     <div class="mx-auto flex min-h-screen max-w-6xl flex-col px-4 py-6 lg:px-8 lg:py-10">
       <header class="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div class="flex items-center gap-4">
-          <div
-            class="flex h-14 w-14 items-center justify-center rounded-2xl bg-merchant-primary text-2xl font-black text-white shadow-lg shadow-merchant-primary/30"
-          >
-            K
-          </div>
+          <img :src="logoUrl" alt="Kopirex" class="h-14 w-auto drop-shadow-lg" />
           <div>
             <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Kopirex POS</p>
             <h1 class="text-2xl font-black text-slate-900">Buka Shift</h1>

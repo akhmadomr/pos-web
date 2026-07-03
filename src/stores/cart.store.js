@@ -71,9 +71,9 @@ export const useCartStore = defineStore('cart', () => {
 
   const taxableAmount = computed(() => Math.max(0, subtotal.value - discountAmount.value))
 
-  const taxAmount = computed(() => taxableAmount.value * TAX_RATE)
+  const taxAmount = computed(() => 0)
 
-  const serviceCharge = computed(() => taxableAmount.value * SERVICE_CHARGE_RATE)
+  const serviceCharge = computed(() => 0)
 
   const total = computed(() => taxableAmount.value + taxAmount.value + serviceCharge.value)
 

@@ -30,10 +30,14 @@ const isValid = computed(() => receivedAmount.value >= props.total)
 const shortcuts = computed(() => {
   const total = props.total
   return [
+    { label: 'Pas', value: Math.ceil(total / 1000) * 1000 || total },
+    { label: '20rb', value: 20000 },
+    { label: '30rb', value: 30000 },
+    { label: '40rb', value: 40000 },
     { label: '50rb', value: 50000 },
     { label: '100rb', value: 100000 },
+    { label: '150rb', value: 150000 },
     { label: '200rb', value: 200000 },
-    { label: 'Pas', value: Math.ceil(total / 1000) * 1000 || total },
   ]
 })
 

@@ -3,6 +3,7 @@ import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppButton from '@/components/common/AppButton.vue'
 import { useAuthStore } from '@/stores/auth.store'
+import logoUrl from '@/assets/kopirexnew.png'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -37,10 +38,8 @@ const handleLogin = async () => {
       <div class="absolute -bottom-24 -right-24 h-96 w-96 rounded-full bg-merchant-primary/5 blur-3xl" />
 
       <div class="relative z-10 max-w-lg text-center">
-        <div
-          class="mb-8 flex h-24 w-24 items-center justify-center rounded-3xl bg-merchant-primary text-4xl font-black text-white shadow-2xl shadow-merchant-primary/30"
-        >
-          K
+        <div class="mb-8 flex items-center justify-center">
+          <img :src="logoUrl" alt="Kopirex" class="h-28 w-auto drop-shadow-xl" />
         </div>
         <h1 class="mb-6 text-4xl font-black leading-tight tracking-tight text-slate-900">
           Point of Sale
@@ -54,10 +53,8 @@ const handleLogin = async () => {
     <div class="relative flex w-full items-center justify-center overflow-hidden bg-merchant-primary p-6 sm:p-12 lg:w-1/2">
       <div class="relative z-10 w-full max-w-md">
         <div class="mb-10 text-center lg:hidden">
-          <div
-            class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 text-2xl font-black text-white"
-          >
-            K
+          <div class="mb-4 flex items-center justify-center">
+            <img :src="logoUrl" alt="Kopirex" class="h-16 w-auto" />
           </div>
           <h1 class="text-3xl font-black tracking-tight text-white">Kopirex POS</h1>
           <p class="mt-2 font-medium text-white/70">Masuk sebagai kasir</p>
