@@ -1,0 +1,43 @@
+name: Deploy Kopirex POS
+
+on:
+  push:
+    branches:
+      - staging
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_APP_NAME: ${{ secrets.VITE_APP_NAME }}
+          VITE_TAX_RATE: ${{ secrets.VITE_TAX_RATE }}
+          VITE_SERVICE_CHARGE: ${{ secrets.VITE_SERVICE_CHARGE }}
+          VITE_PRINT_SERVER_URL: ${{ secrets.VITE_PRINT_SERVER_URL }}
+
+      - name: Deploy
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          security: loose
+          timeout: 120000
+          local-dir: dist/
+          server-dir: /public_html/kopirex.acspeduli.com/ 
