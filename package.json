@@ -12,6 +12,7 @@
     "@headlessui/vue": "^1.7.23",
     "@heroicons/vue": "^2.2.0",
     "@vueuse/core": "^14.3.0",
+    "apexcharts": "^5.16.0",
     "axios": "^1.16.1",
     "dayjs": "^1.11.20",
     "html5-qrcode": "^2.3.8",
@@ -19,7 +20,8 @@
     "pinia": "^3.0.4",
     "primeicons": "^7.0.0",
     "vue": "^3.5.34",
-    "vue-router": "^4.6.4"
+    "vue-router": "^4.6.4",
+    "vue3-apexcharts": "^1.11.1"
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.11",
