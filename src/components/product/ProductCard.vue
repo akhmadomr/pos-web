@@ -52,8 +52,9 @@ const onClick = () => emit('select', props.product)
     </div>
 
     <div class="flex flex-1 flex-col p-3">
-      <p class="line-clamp-2 text-sm font-bold leading-snug text-slate-900">{{ product.name }}</p>
-      <p class="mt-auto pt-2 text-base font-black text-merchant-primary">
+      <p class="line-clamp-1 text-sm font-bold leading-snug text-slate-900">{{ product.name }}</p>
+      <p v-if="product.slang" class="mt-0.5 line-clamp-1 text-xs font-medium text-slate-400">{{ product.slang }}</p>
+      <p class="mt-auto pt-1.5 text-base font-black text-merchant-primary">
         {{ formatRupiah(product.selling_price) }}
       </p>
     </div>
