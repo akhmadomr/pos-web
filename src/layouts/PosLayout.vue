@@ -5,10 +5,11 @@ import dayjs from 'dayjs'
 import AppButton from '@/components/common/AppButton.vue'
 import CloseShiftModal from '@/components/shift/CloseShiftModal.vue'
 import ShiftSummary from '@/components/shift/ShiftSummary.vue'
+import ProfileModal from '@/components/profile/ProfileModal.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { usePrinter } from '@/composables/usePrinter'
 import { useSettingsStore } from '@/stores/settings.store'
-import logoUrl from '@/assets/kopirexnew.png'
+import logoUrl from '@/assets/logo kopirex-01.png'
 
 const router = useRouter()
 const route = useRoute()
@@ -20,6 +21,22 @@ const now = ref(dayjs())
 const showCloseModal = ref(false)
 const shiftSummaryRef = ref(null)
 let clockTimer = null
+const isFullscreen = ref(false)
+const isSidebarOpen = ref(false)
+const showDropdown = ref(false)
+const showProfileModal = ref(false)
+
+const toggleFullscreen = () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(err => {
+      console.warn('Error attempting to enable fullscreen:', err.message)
+    })
+  } else {
+    if (document.exitFullscreen) {
+      document.exitFullscreen()
+    }
+  }
+}
 
 const clockLabel = computed(() => now.value.format('HH:mm:ss'))
 const dateLabel = computed(() => now.value.format('dddd, DD MMM YYYY'))
@@ -47,6 +64,10 @@ onMounted(() => {
   clockTimer = window.setInterval(() => {
     now.value = dayjs()
   }, 1000)
+
+  document.addEventListener('fullscreenchange', () => {
+    isFullscreen.value = !!document.fullscreenElement
+  })
 })
 
 onUnmounted(() => {
@@ -55,84 +76,168 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col bg-slate-100">
-    <header class="sticky top-0 z-50 border-b border-slate-200 bg-white shadow-sm">
-      <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 lg:px-6">
-        <div class="flex items-center gap-3">
-          <img :src="logoUrl" alt="Kopirex" class="h-10 w-auto" />
-          <div>
-            <p class="text-sm font-bold text-slate-900">{{ authStore.cashierName }}</p>
-            <p class="text-xs text-slate-500">{{ authStore.outletName }}</p>
-          </div>
-        </div>
+  <div class="flex min-h-screen bg-slate-100">
+    <!-- Overlay for Sidebar -->
+    <div 
+      v-if="isSidebarOpen" 
+      class="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm transition-opacity" 
+      @click="isSidebarOpen = false"
+    />
 
-        <ShiftSummary ref="shiftSummaryRef" />
-
-        <div class="text-right">
-          <p class="font-mono text-xl font-black tabular-nums text-slate-900">{{ clockLabel }}</p>
-          <p class="text-xs capitalize text-slate-500">{{ dateLabel }}</p>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-2">
-          <!-- Printer status indicator -->
-          <button
-            type="button"
-            :title="printer.printerOnline.value ? 'Printer Online' : 'Printer Offline (browser print)'"
-            class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition"
-            :class="printer.printerOnline.value
-              ? 'bg-emerald-50 text-emerald-700'
-              : 'bg-slate-100 text-slate-500'"
-            @click="printer.checkPrinterStatus()"
-          >
-            <i class="pi pi-print text-xs" />
-            {{ printer.printerOnline.value ? 'Printer Online' : 'Browser Print' }}
-          </button>
-
-          <span
-            class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700"
-          >
-            <span class="h-2 w-2 rounded-full bg-emerald-500" />
-            Shift Aktif
-          </span>
-
-          <AppButton variant="secondary" @click="showCloseModal = true">
-            <i class="pi pi-sign-out" />
-            Tutup Shift
-          </AppButton>
-
-          <button
-            type="button"
-            class="rounded-xl p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-            title="Keluar"
-            @click="handleLogout"
-          >
-            <i class="pi pi-power-off" />
-          </button>
-        </div>
+    <!-- Sidebar (Offcanvas) -->
+    <aside 
+      class="fixed bottom-0 left-0 top-0 z-[70] flex w-64 flex-col bg-white shadow-2xl transition-transform duration-300"
+      :class="isSidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+    >
+      <div class="flex items-center justify-between border-b border-slate-100 p-4">
+        <img :src="logoUrl" alt="Kopirex" class="h-8 w-auto" />
+        <button @click="isSidebarOpen = false" class="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+          <i class="pi pi-times text-xl" />
+        </button>
       </div>
 
-      <nav class="flex gap-1 overflow-x-auto border-t border-slate-100 px-4 lg:px-6">
+      <nav class="flex-1 space-y-1 overflow-y-auto p-4">
+        <p class="mb-2 px-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Menu Utama</p>
         <router-link
           v-for="item in navItems"
           :key="item.path"
           :to="item.path"
-          class="flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition"
-          :class="
-            isActive(item.path)
-              ? 'border-merchant-primary text-merchant-primary'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          "
+          class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition"
+          :class="isActive(item.path) ? 'bg-merchant-primary/10 text-merchant-primary' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'"
+          @click="isSidebarOpen = false"
         >
           <i :class="['pi', item.icon]" />
           {{ item.label }}
         </router-link>
-      </nav>
-    </header>
+        
+        <div class="my-4 border-t border-slate-100" />
+        <p class="mb-2 px-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Akun & Sistem</p>
 
-    <main class="flex-1 p-4 lg:p-6">
-      <router-view />
-    </main>
+        <button @click="showProfileModal = true; isSidebarOpen = false" class="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-slate-500 transition hover:bg-slate-50 hover:text-slate-700">
+          <i class="pi pi-user-edit" />
+          Profil Saya
+        </button>
+
+        <div class="my-4 border-t border-slate-100" />
+        <p class="mb-2 px-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</p>
+
+        <div class="space-y-1">
+          <button
+            type="button"
+            class="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition hover:bg-slate-50"
+            :class="printer.printerOnline.value ? 'text-emerald-600' : 'text-slate-500 hover:text-slate-700'"
+            @click="printer.checkPrinterStatus()"
+          >
+            <i class="pi pi-print" />
+            {{ printer.printerOnline.value ? 'Printer Online' : 'Browser Print' }}
+          </button>
+          
+          <div class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-emerald-600">
+            <i class="pi pi-check-circle" />
+            Shift Aktif
+          </div>
+
+          <button
+            type="button"
+            class="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+            @click="toggleFullscreen(); isSidebarOpen = false"
+          >
+            <i :class="['pi', isFullscreen ? 'pi-window-minimize' : 'pi-window-maximize']" />
+            {{ isFullscreen ? 'Exit Fullscreen' : 'Fullscreen' }}
+          </button>
+          
+          <button
+            type="button"
+            class="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-rose-600 transition hover:bg-rose-50"
+            @click="handleLogout"
+          >
+            <i class="pi pi-power-off" />
+            Logout
+          </button>
+        </div>
+      </nav>
+    </aside>
+
+    <div class="flex min-w-0 flex-1 flex-col">
+      <header class="sticky top-0 z-40 border-b border-slate-200 bg-white shadow-sm">
+        <div class="flex items-center justify-between gap-2 px-3 py-2 lg:px-6 lg:py-3">
+          
+          <!-- LEFT: Logo (Trigger Sidebar) -->
+          <button 
+            class="flex shrink-0 items-center justify-center rounded-xl p-1 transition hover:bg-slate-50 lg:p-2"
+            @click="isSidebarOpen = true"
+          >
+            <img :src="logoUrl" alt="Kopirex" class="h-8 w-auto lg:h-10" />
+          </button>
+
+          <!-- CENTER: Shift Summary -->
+          <div class="flex min-w-0 flex-1 justify-center overflow-x-auto overflow-y-hidden no-scrollbar">
+            <ShiftSummary ref="shiftSummaryRef" />
+          </div>
+
+          <!-- RIGHT: Clock & Avatar Dropdown -->
+          <div class="flex shrink-0 items-center gap-3">
+            <div class="hidden text-right lg:block">
+              <p class="font-mono text-xl font-black leading-none tabular-nums text-slate-900">{{ clockLabel }}</p>
+              <p class="mt-1 text-xs capitalize text-slate-500">{{ dateLabel }}</p>
+            </div>
+
+            <div class="relative">
+              <button 
+                @click="showDropdown = !showDropdown" 
+                class="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-slate-600 transition hover:bg-slate-300 lg:h-10 lg:w-10"
+              >
+                <i class="pi pi-user text-base lg:text-lg" />
+              </button>
+
+              <!-- Dropdown Menu -->
+              <div v-if="showDropdown" class="absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-200 bg-white shadow-xl lg:w-56">
+                 <div class="border-b border-slate-100 px-4 py-3">
+                   <p class="truncate text-sm font-bold text-slate-900">{{ authStore.cashierName }}</p>
+                   <p class="truncate text-[10px] uppercase tracking-wider text-slate-500">{{ authStore.outletName }}</p>
+                 </div>
+                 <div class="py-1">
+                   <button @click="showDropdown = false; showProfileModal = true" class="flex w-full items-center px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                     <i class="pi pi-user-edit w-6 text-slate-400" /> Profil Saya
+                   </button>
+                   <button @click="showDropdown = false; showCloseModal = true" class="flex w-full items-center px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                     <i class="pi pi-sign-out w-6 text-slate-400" /> Tutup Shift
+                   </button>
+                   <div class="my-1 border-t border-slate-100" />
+                   <button @click="showDropdown = false; handleLogout()" class="flex w-full items-center px-4 py-2 text-sm font-bold text-rose-600 hover:bg-rose-50">
+                     <i class="pi pi-power-off w-6" /> Logout
+                   </button>
+                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Desktop Horizontal Nav -->
+        <nav class="hidden gap-1 overflow-x-auto border-t border-slate-100 px-6 lg:flex">
+          <router-link
+            v-for="item in navItems"
+            :key="item.path"
+            :to="item.path"
+            class="flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition"
+            :class="
+              isActive(item.path)
+                ? 'border-merchant-primary text-merchant-primary'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            "
+          >
+            <i :class="['pi', item.icon]" />
+            {{ item.label }}
+          </router-link>
+        </nav>
+      </header>
+
+      <main class="flex-1 p-2 sm:p-4 lg:p-6">
+        <router-view />
+      </main>
+    </div>
 
     <CloseShiftModal :show="showCloseModal" @close="showCloseModal = false" @closed="onShiftClosed" />
+    <ProfileModal :show="showProfileModal" @close="showProfileModal = false" />
   </div>
 </template>

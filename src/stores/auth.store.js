@@ -61,10 +61,10 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function login(email, password) {
+  async function login(name, password) {
     isLoading.value = true
     try {
-      const session = await authApi.loginRequest(email, password)
+      const session = await authApi.loginRequest(name, password)
       assertPosRole(session.user.role)
       setSession(session.token, session.user)
       await fetchUser()

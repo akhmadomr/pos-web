@@ -54,22 +54,23 @@ defineExpose({ refresh: loadSummary })
 <template>
   <div
     v-if="authStore.hasActiveShift"
-    class="flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-semibold text-slate-600 sm:gap-4 sm:px-4 sm:text-xs"
+    class="flex flex-nowrap items-center justify-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-2 py-1.5 text-[9px] font-bold text-slate-600 sm:gap-4 sm:rounded-2xl sm:px-4 sm:py-2 sm:text-xs"
     :class="{ 'opacity-60': loading }"
   >
-    <div class="flex items-center gap-1.5">
-      <i class="pi pi-clock text-merchant-primary" />
-      <span>{{ durationLabel }}</span>
+    <div class="flex items-center gap-1 sm:gap-1.5">
+      <i class="pi pi-clock text-[10px] text-merchant-primary sm:text-sm" />
+      <span class="whitespace-nowrap">{{ durationLabel }}</span>
     </div>
-    <span class="h-4 w-px bg-slate-200" />
-    <div class="flex items-center gap-1.5">
-      <i class="pi pi-receipt text-merchant-primary" />
-      <span>{{ orderCount }} order</span>
+    <span class="mx-0.5 h-3 w-px bg-slate-200 sm:mx-0 sm:h-4" />
+    <div class="flex items-center gap-1 sm:gap-1.5">
+      <i class="pi pi-receipt text-[10px] text-merchant-primary sm:text-sm" />
+      <span class="whitespace-nowrap">{{ orderCount }}</span>
+      <span class="hidden sm:inline"> order</span>
     </div>
-    <span class="h-4 w-px bg-slate-200" />
-    <div class="flex items-center gap-1.5">
-      <i class="pi pi-wallet text-merchant-primary" />
-      <span>{{ revenueLabel }}</span>
+    <span class="mx-0.5 h-3 w-px bg-slate-200 sm:mx-0 sm:h-4" />
+    <div class="flex items-center gap-1 sm:gap-1.5">
+      <i class="pi pi-wallet text-[10px] text-merchant-primary sm:text-sm" />
+      <span class="whitespace-nowrap">{{ revenueLabel }}</span>
     </div>
   </div>
 </template>

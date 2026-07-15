@@ -12,21 +12,31 @@ const showPassword = ref(false)
 const error = ref('')
 
 const form = reactive({
-  email: '',
+  name: '',
   password: '',
 })
 
 const handleLogin = async () => {
   error.value = ''
   try {
-    await authStore.login(form.email, form.password)
+    await authStore.login(form.name, form.password)
     router.push(authStore.hasActiveShift ? { name: 'pos' } : { name: 'shift-open' })
   } catch (err) {
+    if (err.response?.status === 429) {
+      error.value = 'Terlalu banyak percobaan. Silakan tunggu beberapa saat.'
+      return
+    }
+
+    if (err.response?.status === 422 && err.response?.data?.errors) {
+      const errors = err.response.data.errors
+      error.value = Object.values(errors)[0][0]
+      return
+    }
+
     error.value =
-      err.message ||
-      err.data?.message ||
       err.response?.data?.message ||
-      'Email atau password salah.'
+      err.data?.message ||
+      'Username atau password salah.'
   }
 }
 </script>
@@ -68,16 +78,16 @@ const handleLogin = async () => {
         <div class="rounded-[2.5rem] border border-white/20 bg-white/10 p-8 shadow-2xl backdrop-blur-2xl sm:p-12">
           <form class="space-y-8" @submit.prevent="handleLogin">
             <div class="space-y-2">
-              <label class="ml-1 block text-[10px] font-black uppercase tracking-[0.2em] text-white/60">EMAIL</label>
+              <label class="ml-1 block text-[10px] font-black uppercase tracking-[0.2em] text-white/60">USERNAME</label>
               <div class="group relative">
                 <i
-                  class="pi pi-envelope absolute left-0 top-1/2 -translate-y-1/2 text-white/50 transition-colors group-focus-within:text-white"
+                  class="pi pi-user absolute left-0 top-1/2 -translate-y-1/2 text-white/50 transition-colors group-focus-within:text-white"
                 />
                 <input
-                  v-model="form.email"
-                  type="email"
+                  v-model="form.name"
+                  type="text"
                   required
-                  placeholder="cashier@kopirex.com"
+                  placeholder="username"
                   class="w-full border-b-2 border-white/20 bg-transparent py-3 pl-8 font-bold text-white placeholder-white/30 transition-all focus:border-white focus:outline-none"
                 />
               </div>

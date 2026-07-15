@@ -3,6 +3,7 @@ import AppButton from '@/components/common/AppButton.vue'
 import CartItem from '@/components/order/CartItem.vue'
 import OrderSummary from '@/components/order/OrderSummary.vue'
 import { useCartStore } from '@/stores/cart.store'
+import { formatRupiah } from '@/utils/currency'
 
 const emit = defineEmits(['checkout'])
 
@@ -21,7 +22,7 @@ const handleCheckout = () => {
 
 <template>
   <div class="flex h-full min-h-0 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
-    <div class="shrink-0 border-b border-slate-100 p-4">
+    <div class="hidden shrink-0 border-b border-slate-100 p-4 lg:block">
       <h2 class="text-lg font-black text-slate-900">Keranjang</h2>
       <p class="text-xs text-slate-500">{{ cartStore.itemCount }} item</p>
 
@@ -45,7 +46,7 @@ const handleCheckout = () => {
         <p class="mt-1 text-sm text-slate-400">Pilih produk untuk memulai pesanan</p>
       </div>
 
-      <div v-else class="space-y-3">
+      <div v-else class="space-y-3 flex flex-col min-h-full">
         <CartItem
           v-for="(item, index) in cartStore.items"
           :key="item.id"
@@ -54,14 +55,19 @@ const handleCheckout = () => {
           @update-qty="cartStore.updateQty"
           @remove="cartStore.removeItem"
         />
+
+        <div class="mt-auto pt-6 pb-2">
+          <OrderSummary />
+        </div>
       </div>
     </div>
 
-    <div v-if="cartStore.items.length" class="shrink-0 border-t border-slate-100 bg-slate-50/80 p-4">
-      <OrderSummary class="mb-4" />
-      <AppButton class="w-full py-4 text-base" @click="handleCheckout">
-        <i class="pi pi-credit-card" />
-        Proses Pembayaran
+    <div v-if="cartStore.items.length" class="shrink-0 border-t border-slate-100 bg-white p-4">
+      <AppButton class="w-full py-4 text-base shadow-lg shadow-merchant-primary/20" @click="handleCheckout">
+        <div class="flex items-center justify-between w-full px-2">
+          <span class="flex items-center gap-2"><i class="pi pi-credit-card" /> Proses</span>
+          <span class="font-black">{{ formatRupiah(cartStore.total) }}</span>
+        </div>
       </AppButton>
     </div>
   </div>
