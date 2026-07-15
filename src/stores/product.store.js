@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { fetchPosProducts } from '@/api/products'
+import { db } from '@/utils/db'
 
 export const useProductStore = defineStore('product', () => {
   const products = ref([])
@@ -32,11 +33,31 @@ export const useProductStore = defineStore('product', () => {
     loading.value = true
     error.value = null
     try {
+      if (!navigator.onLine) {
+        throw new Error('Offline')
+      }
       const result = await fetchPosProducts(outletId)
       // Guard: pastikan selalu array meskipun API return null/object
       products.value = Array.isArray(result) ? result : []
       lastFetchedAt.value = new Date().toISOString()
+      
+      // Simpan ke IndexedDB untuk offline fallback
+      try {
+        await db.products.clear()
+        await db.products.bulkAdd(JSON.parse(JSON.stringify(products.value)))
+      } catch (dbErr) {
+        console.warn('Gagal menyimpan ke IndexedDB', dbErr)
+      }
     } catch (err) {
+      if (!navigator.onLine || err.message === 'Network Error' || err.name === 'TypeError' || err.message?.includes('fetch')) {
+        // Fallback baca dari IndexedDB
+        const offlineProducts = await db.products.toArray()
+        if (offlineProducts.length > 0) {
+          products.value = offlineProducts
+          error.value = 'Mode Offline: Menampilkan data tersimpan'
+          return
+        }
+      }
       error.value = err.response?.data?.message || 'Gagal memuat produk.'
       products.value = []
     } finally {
