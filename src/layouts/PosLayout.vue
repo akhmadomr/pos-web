@@ -28,6 +28,7 @@ const navItems = [
   { label: 'Kasir', path: '/pos', icon: 'pi-shopping-cart' },
   { label: 'Order', path: '/pos/orders', icon: 'pi-receipt' },
   { label: 'Riwayat', path: '/pos/history', icon: 'pi-history' },
+  { label: 'Histori Shift', path: '/pos/shifts/history', icon: 'pi-calendar-clock' },
 ]
 
 const isActive = (path) => route.path === path

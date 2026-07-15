@@ -3,7 +3,7 @@ import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppButton from '@/components/common/AppButton.vue'
 import { useAuthStore } from '@/stores/auth.store'
-import logoUrl from '@/assets/kopirexnew.png'
+import logoUrl from '@/assets/logo kopirex-01.png'
 
 const router = useRouter()
 const authStore = useAuthStore()

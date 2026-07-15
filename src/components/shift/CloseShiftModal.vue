@@ -5,7 +5,8 @@ import AppAlert from '@/components/common/AppAlert.vue'
 import AppButton from '@/components/common/AppButton.vue'
 import AppModal from '@/components/common/AppModal.vue'
 import AppNumpad from '@/components/common/AppNumpad.vue'
-import { closeShift, fetchShiftSummary } from '@/api/shifts'
+import AppCreatableSelect from '@/components/common/AppCreatableSelect.vue'
+import { closeShift, fetchShiftSummary, fetchExpenseCategories } from '@/api/shifts'
 import { useAuthStore } from '@/stores/auth.store'
 import { formatRupiah } from '@/utils/currency'
 import { PAYMENT_METHOD_LABELS } from '@/utils/shift'
@@ -30,6 +31,27 @@ const loadingSummary = ref(false)
 const error = ref('')
 const apiWarnings = ref([])
 
+const expenses = ref([])
+const expenseCategories = ref([])
+
+const addExpense = () => {
+  expenses.value.push({ category: '', qty: 1, price_per_item: '', amount: 0 })
+}
+
+const removeExpense = (index) => {
+  expenses.value.splice(index, 1)
+}
+
+const calculateExpenseAmount = (exp) => {
+  const qty = Number(exp.qty) || 0
+  const price = Number(String(exp.price_per_item).replace(/\D/g, '')) || 0
+  exp.amount = qty * price
+}
+
+const totalExpenses = computed(() => {
+  return expenses.value.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0)
+})
+
 const paymentRows = computed(() => {
   if (!summary.value?.payments_by_method) return []
 
@@ -42,7 +64,10 @@ const paymentRows = computed(() => {
     }))
 })
 
-const systemCash = computed(() => Number(summary.value?.system_cash ?? 0))
+const systemCash = computed(() => {
+  const base = Number(summary.value?.system_cash ?? 0)
+  return base - totalExpenses.value
+})
 const threshold = computed(() => Number(summary.value?.cash_diff_threshold ?? 10000))
 
 const closingCashAmount = computed(() => Number(closingCash.value.replace(/\D/g, '') || 0))
@@ -57,7 +82,12 @@ const loadSummary = async () => {
   loadingSummary.value = true
   error.value = ''
   try {
-    summary.value = await fetchShiftSummary(authStore.user?.outlet_id)
+    const [summaryData, categories] = await Promise.all([
+      fetchShiftSummary(authStore.user?.outlet_id),
+      fetchExpenseCategories(),
+    ])
+    summary.value = summaryData
+    expenseCategories.value = categories.map(c => ({ label: c, value: c }))
   } catch (err) {
     error.value = err.response?.data?.message || 'Gagal memuat ringkasan shift.'
     summary.value = null
@@ -72,6 +102,7 @@ watch(
     if (visible) {
       closingCash.value = ''
       notes.value = ''
+      expenses.value = []
       apiWarnings.value = []
       loadSummary()
     }
@@ -91,9 +122,19 @@ const submitCloseShift = async () => {
 
   loading.value = true
   try {
+    const formattedExpenses = expenses.value
+      .filter(e => e.category && Number(e.amount) > 0)
+      .map(e => ({
+        category: e.category,
+        qty: Number(e.qty) || 1,
+        price_per_item: Number(String(e.price_per_item).replace(/\D/g, '')) || 0,
+        amount: Number(e.amount),
+      }))
+
     const response = await closeShift({
       closing_cash: closingCashAmount.value,
       notes: notes.value.trim() || null,
+      expenses: formattedExpenses,
     })
 
     authStore.setShift(null)
@@ -169,7 +210,72 @@ const submitCloseShift = async () => {
             <p class="mt-1 text-2xl font-black text-merchant-primary">{{ formatRupiah(systemCash) }}</p>
             <p class="mt-1 text-xs text-slate-500">
               Kas awal {{ formatRupiah(summary.opening_cash) }} + penjualan tunai bersih
+              <span v-if="totalExpenses > 0">- pengeluaran {{ formatRupiah(totalExpenses) }}</span>
             </p>
+          </div>
+
+          <!-- Expenses Section -->
+          <div class="rounded-2xl border border-slate-100 bg-white p-4">
+            <div class="mb-3 flex items-center justify-between">
+              <p class="text-xs font-bold uppercase text-slate-400">Pengeluaran</p>
+              <button
+                type="button"
+                class="text-xs font-bold text-merchant-primary hover:text-merchant-primary/80"
+                @click="addExpense"
+              >
+                + Tambah
+              </button>
+            </div>
+            
+            <div v-if="expenses.length" class="space-y-4">
+              <div v-for="(exp, index) in expenses" :key="index" class="relative rounded-xl border border-slate-100 bg-slate-50 p-3">
+                <button
+                  type="button"
+                  class="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-rose-100 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors"
+                  @click="removeExpense(index)"
+                >
+                  <i class="pi pi-times text-xs" />
+                </button>
+                <div class="mb-3">
+                  <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Nama</label>
+                  <AppCreatableSelect
+                    v-model="exp.category"
+                    :options="expenseCategories"
+                    placeholder="Nama pengeluaran..."
+                  />
+                </div>
+                <div class="flex gap-2">
+                  <div class="w-16">
+                    <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Qty</label>
+                    <input
+                      v-model="exp.qty"
+                      type="number"
+                      min="1"
+                      class="w-full rounded-xl border border-slate-200 px-2 py-2 text-center text-sm font-medium focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
+                      @input="calculateExpenseAmount(exp)"
+                    />
+                  </div>
+                  <div class="flex-1">
+                    <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Harga per Item</label>
+                    <div class="relative">
+                      <span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">Rp</span>
+                      <input
+                        v-model="exp.price_per_item"
+                        type="text"
+                        class="w-full rounded-xl border border-slate-200 py-2 pl-10 pr-3 text-sm font-medium focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
+                        placeholder="0"
+                        @input="exp.price_per_item = exp.price_per_item.replace(/\D/g, ''); calculateExpenseAmount(exp)"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-2 text-right">
+                  <p class="text-[10px] font-bold uppercase text-slate-400">Total</p>
+                  <p class="text-sm font-black text-rose-500">{{ formatRupiah(exp.amount) }}</p>
+                </div>
+              </div>
+            </div>
+            <p v-else class="text-sm text-slate-400">Tidak ada pengeluaran tambahan.</p>
           </div>
         </div>
 

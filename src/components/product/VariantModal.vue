@@ -132,6 +132,7 @@ const handleClose = () => emit('close')
                 </div>
                 <div>
                   <h3 class="text-xl font-black text-slate-900">{{ product.name }}</h3>
+                  <p v-if="product.slang" class="text-sm font-medium text-slate-400">{{ product.slang }}</p>
                   <p class="mt-1 text-lg font-bold text-merchant-primary">{{ formatRupiah(lineTotal) }}</p>
                 </div>
               </div>
