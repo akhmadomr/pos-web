@@ -1,8 +1,8 @@
 import client from './client'
 
-export async function loginRequest(email, password) {
+export async function loginRequest(name, password) {
   const { data } = await client.post('/auth/login', {
-    email,
+    name,
     password,
     device_name: 'kopirex-pos',
   })

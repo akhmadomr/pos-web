@@ -11,6 +11,7 @@ import { fetchTables } from '@/api/tables'
 import { usePayment } from '@/composables/usePayment'
 import { useAuthStore } from '@/stores/auth.store'
 import { useCartStore } from '@/stores/cart.store'
+import { useOrderStore } from '@/stores/order.store'
 import { formatRupiah } from '@/utils/currency'
 
 const props = defineProps({
@@ -24,6 +25,7 @@ const emit = defineEmits(['close', 'paid'])
 
 const authStore = useAuthStore()
 const cartStore = useCartStore()
+const orderStore = useOrderStore()
 const payment = usePayment()
 
 const step = ref(1)
@@ -131,22 +133,28 @@ const handleConfirm = async () => {
   if (!canConfirm.value) return
 
   try {
-    const order = await createOrder(
-      cartStore.buildOrderPayload(authStore.outletId, authStore.shift?.id),
-    )
+    const payload = cartStore.buildOrderPayload(authStore.outletId, authStore.shift?.id)
+    const amount = currentMethod.value === 'cash' ? cashReceivedNum.value : cartStore.total
+    const methodData = {
+      payment_method: currentMethod.value,
+      amount,
+      reference_number: payment.referenceNumber.value || null,
+    }
 
-    const amount =
-      currentMethod.value === 'cash' ? cashReceivedNum.value : cartStore.total
+    if (!navigator.onLine) {
+      // PROSES OFFLINE
+      const offlineResult = await orderStore.saveOfflineOrder(payload, methodData)
+      emit('paid', {
+        order: offlineResult.order,
+        payment: offlineResult.payment,
+        receipt_data: offlineResult.payment.receipt_data,
+        change_amount: offlineResult.payment.change_amount,
+      })
+      return
+    }
 
-    const result = await payment.processPayment(
-      order.id,
-      {
-        payment_method: currentMethod.value,
-        amount,
-        reference_number: payment.referenceNumber.value || null,
-      },
-      cartStore.total,
-    )
+    const order = await createOrder(payload)
+    const result = await payment.processPayment(order.id, methodData, cartStore.total)
 
     emit('paid', {
       order,
@@ -154,8 +162,21 @@ const handleConfirm = async () => {
       receipt_data: result.receipt_data,
       change_amount: result.change_amount ?? 0,
     })
-  } catch {
-    // error sudah di-set oleh payment.error di usePayment
+  } catch (err) {
+    if (!navigator.onLine || err.message === 'Network Error' || err.name === 'TypeError') {
+       // Coba simpan sebagai offline fallback jika gagal di tengah jalan
+       const payload = cartStore.buildOrderPayload(authStore.outletId, authStore.shift?.id)
+       const amount = currentMethod.value === 'cash' ? cashReceivedNum.value : cartStore.total
+       const methodData = { payment_method: currentMethod.value, amount, reference_number: payment.referenceNumber.value || null }
+       const offlineResult = await orderStore.saveOfflineOrder(payload, methodData)
+       emit('paid', {
+         order: offlineResult.order,
+         payment: offlineResult.payment,
+         receipt_data: offlineResult.payment.receipt_data,
+         change_amount: offlineResult.payment.change_amount,
+       })
+    }
+    // error lain sudah di-set oleh payment.error di usePayment
   }
 }
 </script>
