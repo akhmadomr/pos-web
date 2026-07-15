@@ -26,6 +26,9 @@ const isSidebarOpen = ref(false)
 const showDropdown = ref(false)
 const showProfileModal = ref(false)
 
+const isOnline = ref(navigator.onLine)
+const updateOnlineStatus = () => { isOnline.value = navigator.onLine }
+
 const toggleFullscreen = () => {
   if (!document.fullscreenElement) {
     document.documentElement.requestFullscreen().catch(err => {
@@ -68,10 +71,15 @@ onMounted(() => {
   document.addEventListener('fullscreenchange', () => {
     isFullscreen.value = !!document.fullscreenElement
   })
+
+  window.addEventListener('online', updateOnlineStatus)
+  window.addEventListener('offline', updateOnlineStatus)
 })
 
 onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer)
+  window.removeEventListener('online', updateOnlineStatus)
+  window.removeEventListener('offline', updateOnlineStatus)
 })
 </script>
 
@@ -131,6 +139,16 @@ onUnmounted(() => {
             <i class="pi pi-print" />
             {{ printer.printerOnline.value ? 'Printer Online' : 'Browser Print' }}
           </button>
+
+          <button
+            type="button"
+            class="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition hover:bg-slate-50"
+            :class="printer.bluetoothDevice.value ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'"
+            @click="printer.connectBluetooth()"
+          >
+            <i class="pi pi-bluetooth" />
+            {{ printer.bluetoothDevice.value ? 'Bluetooth Terhubung' : 'Koneksikan Bluetooth' }}
+          </button>
           
           <div class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-emerald-600">
             <i class="pi pi-check-circle" />
@@ -176,7 +194,25 @@ onUnmounted(() => {
           </div>
 
           <!-- RIGHT: Clock & Avatar Dropdown -->
-          <div class="flex shrink-0 items-center gap-3">
+          <div class="flex shrink-0 items-center gap-2 lg:gap-3">
+            
+            <!-- Status Icons -->
+            <div class="flex items-center gap-1.5 lg:gap-2 mr-1">
+              <div class="relative flex h-8 w-8 items-center justify-center rounded-full"
+                   :class="isOnline ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400 bg-slate-100'"
+                   title="Status Internet">
+                <i class="pi pi-wifi text-sm lg:text-base" />
+                <div v-if="!isOnline" class="absolute h-0.5 w-5 rotate-45 rounded-full bg-slate-500" />
+              </div>
+              <div class="relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full"
+                   :class="(printer.printerOnline.value || printer.bluetoothDevice.value) ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400 bg-slate-100'"
+                   title="Status Printer"
+                   @click="isSidebarOpen = true">
+                <i class="pi pi-print text-sm lg:text-base" />
+                <div v-if="!printer.printerOnline.value && !printer.bluetoothDevice.value" class="absolute h-0.5 w-5 rotate-45 rounded-full bg-slate-500" />
+              </div>
+            </div>
+
             <div class="hidden text-right lg:block">
               <p class="font-mono text-xl font-black leading-none tabular-nums text-slate-900">{{ clockLabel }}</p>
               <p class="mt-1 text-xs capitalize text-slate-500">{{ dateLabel }}</p>

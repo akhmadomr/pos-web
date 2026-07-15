@@ -96,11 +96,11 @@ export function generateReceiptHTML(data, settings = {}) {
   <meta charset="utf-8" />
   <title>Struk ${escapeHtml(data.order_number ?? '')}</title>
   <style>
-    @page { size: 80mm auto; margin: 4mm 3mm; }
+    @page { margin: 0; }
     * { box-sizing: border-box; }
     body {
       font-family: 'Courier New', Courier, monospace;
-      font-size: 11px; width: 72mm; margin: 0 auto; color: #000; line-height: 1.5;
+      font-size: 11px; width: 72mm; margin: 4mm auto; color: #000; line-height: 1.5;
     }
     .center { text-align: center; }
     .divider-dash { border: none; border-top: 1px dashed #000; }
@@ -112,7 +112,7 @@ export function generateReceiptHTML(data, settings = {}) {
 <body>
   ${htmlBody}
   <p class="center" style="font-size:9px;color:#777;font-weight:bold;margin-top:12px;">Powered by Kopirex POS</p>
-  <script>window.onload=function(){setTimeout(function(){window.print();},300);};<\/script>
+  <script>setTimeout(function(){ window.print(); }, 500);</script>
 </body>
 </html>`
 }
