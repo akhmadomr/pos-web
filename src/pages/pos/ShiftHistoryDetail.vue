@@ -62,10 +62,14 @@ const trendOptions = computed(() => {
     fill: { type: "gradient", gradient: { enabled: true, opacityFrom: 0.55, opacityTo: 0 } },
     colors: ["#44a4b4", "#194a7a"],
     dataLabels: { enabled: false },
-    xaxis: { categories: data.map(d => d.label), labels: { style: { colors: "#64748b", fontSize: "12px" } } },
+    xaxis: { categories: data.map(d => d.label), labels: { style: { colors: "#64748b", fontSize: "10px" }, hideOverlappingLabels: true } },
     yaxis: [
-      { title: { text: "Pesanan", style: { color: "#44a4b4", fontWeight: 600 } }, labels: { formatter: v => Math.round(v), style: { colors: "#64748b" } } },
-      { opposite: true, title: { text: "Pendapatan (Rp)", style: { color: "#194a7a", fontWeight: 600 } }, labels: { formatter: v => formatRupiah(v), style: { colors: "#64748b" } } }
+      { title: { text: "Pesanan", style: { color: "#44a4b4", fontWeight: 600, fontSize: "10px" } }, labels: { formatter: v => Math.round(v), style: { colors: "#64748b", fontSize: "10px" } } },
+      { opposite: true, title: { text: "Rp", style: { color: "#194a7a", fontWeight: 600, fontSize: "10px" } }, labels: { formatter: v => {
+        if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M'
+        if (v >= 1000) return (v / 1000).toFixed(0) + 'K'
+        return v
+      }, style: { colors: "#64748b", fontSize: "10px" } } }
     ],
     annotations: {
       points: [
@@ -81,8 +85,8 @@ const trendOptions = computed(() => {
         }
       ]
     },
-    legend: { position: "top", horizontalAlign: "right", fontWeight: 500 },
-    grid: { borderColor: "#f1f5f9", xaxis: { lines: { show: false } }, yaxis: { lines: { show: true } } }
+    legend: { position: "top", horizontalAlign: "right", fontWeight: 500, fontSize: '11px' },
+    grid: { borderColor: "#f1f5f9", xaxis: { lines: { show: false } }, yaxis: { lines: { show: true } }, padding: { left: 0, right: 0 } }
   }
 })
 
@@ -125,23 +129,23 @@ const getRankBadgeClass = (idx) => {
 
     <template v-else-if="analytics">
       <!-- Info Shift Card -->
-      <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
-        <div class="grid gap-6 md:grid-cols-4">
+      <div class="rounded-2xl border border-slate-100 bg-white p-4 sm:p-6 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
+        <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
           <div>
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Kasir</p>
-            <p class="mt-1 text-lg font-black text-slate-900">{{ analytics.shift.cashier?.name || '-' }}</p>
+            <p class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Kasir</p>
+            <p class="mt-1 text-sm sm:text-lg font-black text-slate-900 truncate">{{ analytics.shift.cashier?.name || '-' }}</p>
           </div>
           <div>
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Waktu Mulai</p>
-            <p class="mt-1 text-base font-bold text-slate-900">{{ dayjs(analytics.shift.opened_at).format('DD MMM YYYY, HH:mm') }}</p>
+            <p class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Mulai</p>
+            <p class="mt-1 text-xs sm:text-base font-bold text-slate-900">{{ dayjs(analytics.shift.opened_at).format('DD MMM, HH:mm') }}</p>
           </div>
           <div>
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Waktu Tutup</p>
-            <p class="mt-1 text-base font-bold text-slate-900">{{ dayjs(analytics.shift.closed_at).format('DD MMM YYYY, HH:mm') }}</p>
+            <p class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Tutup</p>
+            <p class="mt-1 text-xs sm:text-base font-bold text-slate-900">{{ dayjs(analytics.shift.closed_at).format('DD MMM, HH:mm') }}</p>
           </div>
           <div>
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Kas Awal</p>
-            <p class="mt-1 text-base font-black text-slate-900">{{ formatRupiah(analytics.shift.opening_cash) }}</p>
+            <p class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Kas Awal</p>
+            <p class="mt-1 text-sm sm:text-base font-black text-slate-900">{{ formatRupiah(analytics.shift.opening_cash) }}</p>
           </div>
         </div>
       </div>
@@ -152,37 +156,37 @@ const getRankBadgeClass = (idx) => {
           <i class="pi pi-chart-pie text-merchant-primary" /> Ringkasan Umum
         </h2>
         
-        <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div class="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)]">
-            <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 border border-blue-100 text-blue-700">
-              <i class="pi pi-shopping-cart text-lg" />
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+          <div class="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)]">
+            <div class="mb-2 sm:mb-3 flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-blue-50 border border-blue-100 text-blue-700">
+              <i class="pi pi-shopping-cart text-sm sm:text-lg" />
             </div>
-            <p class="mb-0.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Transaksi</p>
-            <p class="truncate text-2xl font-black text-slate-900">{{ analytics.shift.total_transactions }}</p>
+            <p class="mb-0.5 text-[9px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Transaksi</p>
+            <p class="truncate text-lg sm:text-2xl font-black text-slate-900">{{ analytics.shift.total_transactions }}</p>
           </div>
           
-          <div class="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)]">
-            <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700">
-              <i class="pi pi-money-bill text-lg" />
+          <div class="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)]">
+            <div class="mb-2 sm:mb-3 flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700">
+              <i class="pi pi-money-bill text-sm sm:text-lg" />
             </div>
-            <p class="mb-0.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Pendapatan</p>
-            <p class="truncate text-xl font-black text-slate-900">{{ formatRupiah(analytics.shift.total_revenue) }}</p>
+            <p class="mb-0.5 text-[9px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Pendapatan</p>
+            <p class="truncate text-base sm:text-xl font-black text-slate-900">{{ formatRupiah(analytics.shift.total_revenue) }}</p>
           </div>
 
-          <div class="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)]">
-            <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 border border-amber-100 text-amber-700">
-              <i class="pi pi-wallet text-lg" />
+          <div class="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)]">
+            <div class="mb-2 sm:mb-3 flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-amber-50 border border-amber-100 text-amber-700">
+              <i class="pi pi-wallet text-sm sm:text-lg" />
             </div>
-            <p class="mb-0.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Kas Menurut Sistem</p>
-            <p class="truncate text-xl font-black text-slate-900">{{ formatRupiah(analytics.shift.system_cash) }}</p>
+            <p class="mb-0.5 text-[9px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Kas Sistem</p>
+            <p class="truncate text-base sm:text-xl font-black text-slate-900">{{ formatRupiah(analytics.shift.system_cash) }}</p>
           </div>
 
-          <div class="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)]">
-            <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-xl border" :class="analytics.shift.cash_difference < 0 ? 'bg-rose-50 border-rose-100 text-rose-700' : 'bg-sky-50 border-sky-100 text-sky-700'">
-              <i class="pi pi-sort-alt text-lg" />
+          <div class="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)]">
+            <div class="mb-2 sm:mb-3 flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl border" :class="analytics.shift.cash_difference < 0 ? 'bg-rose-50 border-rose-100 text-rose-700' : 'bg-sky-50 border-sky-100 text-sky-700'">
+              <i class="pi pi-sort-alt text-sm sm:text-lg" />
             </div>
-            <p class="mb-0.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Selisih Kas Fisik</p>
-            <p class="truncate text-xl font-black" :class="analytics.shift.cash_difference < 0 ? 'text-rose-600' : 'text-sky-600'">
+            <p class="mb-0.5 text-[9px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Selisih Kas</p>
+            <p class="truncate text-base sm:text-xl font-black" :class="analytics.shift.cash_difference < 0 ? 'text-rose-600' : 'text-sky-600'">
               {{ analytics.shift.cash_difference >= 0 ? '+' : '' }}{{ formatRupiah(analytics.shift.cash_difference) }}
             </p>
           </div>
@@ -190,11 +194,13 @@ const getRankBadgeClass = (idx) => {
       </div>
 
       <!-- Chart Tren Per Jam -->
-      <div v-if="analytics.hourly_trend.length > 0" class="rounded-2xl border border-slate-100 bg-white p-6 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
-        <h2 class="mb-6 flex items-center gap-2 text-base font-black uppercase tracking-widest text-slate-900">
+      <div v-if="analytics.hourly_trend.length > 0" class="rounded-2xl border border-slate-100 bg-white p-3 sm:p-6 pb-0 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] overflow-hidden">
+        <h2 class="mb-2 sm:mb-6 px-1 flex items-center gap-2 text-sm sm:text-base font-black uppercase tracking-widest text-slate-900">
           <i class="pi pi-chart-line text-merchant-primary" /> Tren Transaksi Per Jam
         </h2>
-        <VueApexCharts type="area" height="350" :options="trendOptions" :series="trendSeries" />
+        <div class="-mx-3 sm:mx-0">
+          <VueApexCharts type="area" height="300" :options="trendOptions" :series="trendSeries" />
+        </div>
       </div>
 
       <!-- Produk Terlaris & Pengeluaran -->
