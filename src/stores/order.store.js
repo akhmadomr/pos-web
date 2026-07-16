@@ -89,7 +89,6 @@ export const useOrderStore = defineStore('order', () => {
 
   async function saveOfflineOrder(payload, methodData) {
     const offlineOrder = {
-      id: 'OFFLINE-' + Date.now(),
       order_number: 'OFF-' + Math.floor(Math.random() * 10000),
       timestamp: new Date().toISOString(),
       payload,
@@ -97,12 +96,12 @@ export const useOrderStore = defineStore('order', () => {
       sync_status: 'pending'
     }
     
-    await db.offline_orders.add(offlineOrder)
+    const generatedId = await db.offline_orders.add(offlineOrder)
     
     // Simulasikan kembalian data order
     return {
       order: {
-        id: offlineOrder.id,
+        id: generatedId,
         order_number: offlineOrder.order_number,
         status: 'completed',
         is_offline: true
