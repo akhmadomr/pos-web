@@ -35,6 +35,48 @@ const getStatusBadge = (status) => {
     label: labelMap[status] || status,
   }
 }
+
+import { usePrinter } from '@/composables/usePrinter'
+const printer = usePrinter()
+
+const handlePrint = async (order) => {
+  const receiptData = {
+    order_number: order.order_number,
+    order_type: order.order_type,
+    table_number: order.table?.table_number || null,
+    timestamp: dayjs(order.created_at).format('DD/MM/YYYY HH:mm'),
+    subtotal: order.subtotal,
+    discount_amount: order.discount_amount,
+    tax_amount: order.tax_amount,
+    service_charge: order.service_charge,
+    total_amount: order.total_amount,
+    payment_method: order.payment_method || 'Cash',
+    cash_received: order.total_amount, // Asumsi uang pas jika tidak ada data dari backend
+    change_amount: 0,
+    items: (order.order_items || []).map((i) => ({
+      name: i.product_name + (i.variant_label ? ` - ${i.variant_label}` : '') + (i.addons_label ? ` (+${i.addons_label})` : ''),
+      qty: i.quantity,
+      unit_price: Number(i.unit_price) + Number(i.addons_price),
+      total: Number(i.total_price),
+    })),
+  }
+  
+  const success = await printer.printReceipt(receiptData)
+  if (!success) {
+    alert('Gagal mencetak struk. Pastikan printer terhubung.')
+  }
+}
+
+import { useRouter } from 'vue-router'
+const router = useRouter()
+const editOrder = (order) => {
+  // Bawa ke halaman index/kasir tapi memuat order ini?
+  // Atau karena tidak ada EditOrder.vue, kita beri peringatan.
+  if (order.status === 'completed') {
+    alert('Transaksi yang sudah selesai tidak dapat diubah isinya. Anda hanya bisa membatalkannya melalui menu detail/aktif (jika diizinkan).')
+    return
+  }
+}
 </script>
 
 <template>
@@ -110,6 +152,22 @@ const getStatusBadge = (status) => {
               <p v-if="item.addons_label" class="ml-6 text-xs text-slate-500">+ {{ item.addons_label }}</p>
             </li>
           </ul>
+        </div>
+        <div class="flex items-center gap-2 border-t border-slate-100 p-3 bg-white">
+          <button 
+            type="button" 
+            @click="editOrder(order)"
+            class="flex-1 rounded-xl border border-slate-200 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 transition"
+          >
+            <i class="pi pi-pencil mr-1" /> Edit
+          </button>
+          <button 
+            type="button" 
+            @click="handlePrint(order)"
+            class="flex-1 rounded-xl bg-merchant-primary/10 py-2 text-sm font-bold text-merchant-primary hover:bg-merchant-primary/20 transition"
+          >
+            <i class="pi pi-print mr-1" /> Print Ulang
+          </button>
         </div>
       </div>
     </div>
