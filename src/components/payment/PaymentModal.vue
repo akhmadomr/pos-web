@@ -164,17 +164,21 @@ const handleConfirm = async () => {
     })
   } catch (err) {
     if (!navigator.onLine || err.message === 'Network Error' || err.name === 'TypeError') {
-       // Coba simpan sebagai offline fallback jika gagal di tengah jalan
-       const payload = cartStore.buildOrderPayload(authStore.outletId, authStore.shift?.id)
-       const amount = currentMethod.value === 'cash' ? cashReceivedNum.value : cartStore.total
-       const methodData = { payment_method: currentMethod.value, amount, reference_number: payment.referenceNumber.value || null }
-       const offlineResult = await orderStore.saveOfflineOrder(payload, methodData)
-       emit('paid', {
-         order: offlineResult.order,
-         payment: offlineResult.payment,
-         receipt_data: offlineResult.payment.receipt_data,
-         change_amount: offlineResult.payment.change_amount,
-       })
+       try {
+         // Coba simpan sebagai offline fallback jika gagal di tengah jalan
+         const payload = cartStore.buildOrderPayload(authStore.outletId, authStore.shift?.id)
+         const amount = currentMethod.value === 'cash' ? cashReceivedNum.value : cartStore.total
+         const methodData = { payment_method: currentMethod.value, amount, reference_number: payment.referenceNumber.value || null }
+         const offlineResult = await orderStore.saveOfflineOrder(payload, methodData)
+         emit('paid', {
+           order: offlineResult.order,
+           payment: offlineResult.payment,
+           receipt_data: offlineResult.payment.receipt_data,
+           change_amount: offlineResult.payment.change_amount,
+         })
+       } catch (offlineErr) {
+         console.error('Offline save failed:', offlineErr)
+       }
     }
     // error lain sudah di-set oleh payment.error di usePayment
   }
