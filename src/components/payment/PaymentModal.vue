@@ -132,6 +132,9 @@ const setOrderType = (type) => {
 const handleConfirm = async () => {
   if (!canConfirm.value) return
 
+  payment.isProcessing.value = true
+  payment.error.value = null
+
   try {
     const payload = cartStore.buildOrderPayload(authStore.outletId, authStore.shift?.id)
     const amount = currentMethod.value === 'cash' ? cashReceivedNum.value : cartStore.total
@@ -143,7 +146,7 @@ const handleConfirm = async () => {
 
     if (!navigator.onLine) {
       // PROSES OFFLINE
-      const offlineResult = await orderStore.saveOfflineOrder(payload, methodData)
+      const offlineResult = await orderStore.saveOfflineOrder(payload, methodData, cartStore.total, cartStore.items)
       emit('paid', {
         order: offlineResult.order,
         payment: offlineResult.payment,
@@ -169,7 +172,7 @@ const handleConfirm = async () => {
          const payload = cartStore.buildOrderPayload(authStore.outletId, authStore.shift?.id)
          const amount = currentMethod.value === 'cash' ? cashReceivedNum.value : cartStore.total
          const methodData = { payment_method: currentMethod.value, amount, reference_number: payment.referenceNumber.value || null }
-         const offlineResult = await orderStore.saveOfflineOrder(payload, methodData)
+         const offlineResult = await orderStore.saveOfflineOrder(payload, methodData, cartStore.total, cartStore.items)
          emit('paid', {
            order: offlineResult.order,
            payment: offlineResult.payment,
@@ -178,9 +181,15 @@ const handleConfirm = async () => {
          })
        } catch (offlineErr) {
          console.error('Offline save failed:', offlineErr)
+         payment.error.value = 'Offline Error: ' + (offlineErr.message || offlineErr)
        }
+    } else {
+      // Tampilkan error ke UI jika bukan masalah jaringan (misal validasi backend)
+      const errorMsg = err.response?.data?.message || err.message || 'Gagal memproses pesanan.'
+      payment.error.value = errorMsg
     }
-    // error lain sudah di-set oleh payment.error di usePayment
+  } finally {
+    payment.isProcessing.value = false
   }
 }
 </script>

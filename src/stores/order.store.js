@@ -87,7 +87,7 @@ export const useOrderStore = defineStore('order', () => {
     error.value = null
   }
 
-  async function saveOfflineOrder(payload, methodData) {
+  async function saveOfflineOrder(payload, methodData, orderTotal = 0, cartItems = []) {
     const offlineOrder = {
       order_number: 'OFF-' + Math.floor(Math.random() * 10000),
       timestamp: new Date().toISOString(),
@@ -96,7 +96,9 @@ export const useOrderStore = defineStore('order', () => {
       sync_status: 'pending'
     }
     
-    const generatedId = await db.offline_orders.add(offlineOrder)
+    // Gunakan JSON.parse(JSON.stringify()) untuk menghilangkan Vue Proxy (mencegah DataCloneError)
+    const rawOfflineOrder = JSON.parse(JSON.stringify(offlineOrder))
+    const generatedId = await db.offline_orders.add(rawOfflineOrder)
     
     // Simulasikan kembalian data order
     return {
@@ -107,21 +109,21 @@ export const useOrderStore = defineStore('order', () => {
         is_offline: true
       },
       payment: {
-        change_amount: methodData.amount - payload.total_amount,
+        change_amount: methodData.amount - orderTotal,
         receipt_data: {
           order_number: offlineOrder.order_number,
           order_type: payload.order_type,
           table_number: payload.table_id,
           timestamp: new Date().toLocaleString(),
-          subtotal: payload.subtotal,
-          discount_amount: payload.discount_amount,
-          tax_amount: payload.tax_amount,
-          service_charge: payload.service_charge,
-          total_amount: payload.total_amount,
+          subtotal: orderTotal,
+          discount_amount: 0,
+          tax_amount: 0,
+          service_charge: 0,
+          total_amount: orderTotal,
           payment_method: methodData.payment_method,
           cash_received: methodData.amount,
-          change_amount: methodData.amount - payload.total_amount,
-          items: payload.items.map(i => ({
+          change_amount: methodData.amount - orderTotal,
+          items: cartItems.map(i => ({
             name: i.product_name,
             qty: i.quantity,
             unit_price: Number(i.unit_price) + Number(i.addons_price),

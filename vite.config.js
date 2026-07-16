@@ -39,10 +39,10 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,vue}'],
-        navigateFallback: '/index.html',
+        navigateFallback: 'index.html',
         runtimeCaching: [
           {
-            urlPattern: /^http:\/\/localhost:8000\/api\/.*/i,
+            urlPattern: /\/api\/.*/i,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'kopirex-api-cache',

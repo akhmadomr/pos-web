@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted } from 'vue'
 import AppOfflineBanner from '@/components/common/AppOfflineBanner.vue'
+import PwaInstallPrompt from '@/components/common/PwaInstallPrompt.vue'
 import { useOffline } from '@/composables/useOffline'
 import { useOfflineStore } from '@/stores/offline.store'
 
@@ -20,4 +21,5 @@ onMounted(async () => {
   <div :class="{ 'pt-10': offlineStore.isOffline }">
     <router-view />
   </div>
+  <PwaInstallPrompt />
 </template>

@@ -80,14 +80,14 @@ define(['./workbox-970124e6'], (function (workbox) { 'use strict';
     "url": "registerSW.js",
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
-    "url": "/index.html",
-    "revision": "0.ueq001798fo"
+    "url": "index.html",
+    "revision": "0.ncbaup6vfd4"
   }], {});
   workbox.cleanupOutdatedCaches();
-  workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("/index.html"), {
+  workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
     allowlist: [/^\/$/]
   }));
-  workbox.registerRoute(/^http:\/\/localhost:8000\/api\/.*/i, new workbox.NetworkFirst({
+  workbox.registerRoute(/\/api\/.*/i, new workbox.NetworkFirst({
     "cacheName": "kopirex-api-cache",
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 50,
