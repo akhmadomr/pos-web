@@ -47,18 +47,34 @@ export function usePrinter() {
     try {
       // 1. Coba Bluetooth Printer (jika terhubung)
       if (bluetoothCharacteristic.value) {
-        const escPosPayload = buildEscPosPayload(receiptData, settings)
-        const bytes = jsonToEscPos(escPosPayload)
-        
-        // Chunk write karena batas BLE (biasanya 512 bytes atau 20 bytes)
-        const CHUNK_SIZE = 100
-        for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
-          const chunk = bytes.slice(i, i + CHUNK_SIZE)
-          await bluetoothCharacteristic.value.writeValue(chunk)
+        try {
+          const escPosPayload = buildEscPosPayload(receiptData, settings)
+          const bytes = jsonToEscPos(escPosPayload)
+          
+          // Chunk write dengan batas aman BLE (20 bytes)
+          const CHUNK_SIZE = 20
+          const char = bluetoothCharacteristic.value
+          
+          for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+            const chunk = bytes.slice(i, i + CHUNK_SIZE)
+            if (char.properties.writeWithoutResponse) {
+              await char.writeValueWithoutResponse(chunk)
+            } else {
+              await char.writeValue(chunk)
+            }
+            // Jeda 10ms antar chunk agar buffer printer bluetooth (yang kecil) tidak penuh/crash
+            await new Promise(r => setTimeout(r, 10))
+          }
+          
+          isPrinting.value = false
+          return true
+        } catch (bleErr) {
+          console.error("BLE Print Error:", bleErr)
+          lastError.value = "Bluetooth Error: " + bleErr.message
+          isPrinting.value = false
+          // Jangan fallback ke printViaBrowser jika sudah jelas pakai Bluetooth tapi gagal
+          return false
         }
-        
-        isPrinting.value = false
-        return true
       }
 
       // 2. Coba ESC/POS server lokal (port 7878)
