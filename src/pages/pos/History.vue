@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import AppAlert from '@/components/common/AppAlert.vue'
 import { useOrderStore } from '@/stores/order.store'
 import { formatRupiah } from '@/utils/currency'
@@ -38,8 +38,12 @@ const getStatusBadge = (status) => {
 
 import { usePrinter } from '@/composables/usePrinter'
 const printer = usePrinter()
+const printingOrderId = ref(null)
 
 const handlePrint = async (order) => {
+  if (printingOrderId.value) return // Cegah klik ganda
+  printingOrderId.value = order.id
+  
   const receiptData = {
     order_number: order.order_number,
     order_type: order.order_type,
@@ -65,6 +69,7 @@ const handlePrint = async (order) => {
   if (!success) {
     alert('Gagal mencetak struk. Pastikan printer terhubung.')
   }
+  printingOrderId.value = null
 }
 
 import { useRouter } from 'vue-router'
@@ -164,11 +169,11 @@ const editOrder = (order) => {
           <button 
             type="button" 
             @click="handlePrint(order)"
-            :disabled="printer.isPrinting"
+            :disabled="printingOrderId === order.id"
             class="flex-1 flex items-center justify-center rounded-xl bg-merchant-primary/10 py-2 text-sm font-bold text-merchant-primary hover:bg-merchant-primary/20 transition disabled:opacity-50"
           >
-            <i class="pi mr-1" :class="printer.isPrinting ? 'pi-spinner animate-spin' : 'pi-print'" /> 
-            {{ printer.isPrinting ? 'Mencetak...' : 'Print Ulang' }}
+            <i class="pi mr-1" :class="printingOrderId === order.id ? 'pi-spinner animate-spin' : 'pi-print'" /> 
+            {{ printingOrderId === order.id ? 'Mencetak...' : 'Print Ulang' }}
           </button>
         </div>
       </div>
