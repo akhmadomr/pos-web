@@ -64,6 +64,8 @@ const onShiftClosed = () => {
 
 onMounted(() => {
   settingsStore.load()
+  printer.autoConnectBluetooth()
+  
   clockTimer = window.setInterval(() => {
     now.value = dayjs()
   }, 1000)
@@ -146,8 +148,9 @@ onUnmounted(() => {
             :class="printer.bluetoothDevice.value ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'"
             @click="printer.connectBluetooth()"
           >
-            <i class="pi pi-bluetooth" />
-            {{ printer.bluetoothDevice.value ? 'Bluetooth Terhubung' : 'Koneksikan Bluetooth' }}
+            <i v-if="printer.isConnectingBluetooth.value" class="pi pi-spin pi-spinner text-blue-500" />
+            <i v-else class="pi pi-bluetooth" />
+            {{ printer.isConnectingBluetooth.value ? 'Menyambungkan...' : (printer.bluetoothDevice.value ? 'Bluetooth Terhubung' : 'Koneksikan Bluetooth') }}
           </button>
           
           <div class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-emerald-600">
@@ -208,8 +211,11 @@ onUnmounted(() => {
                    :class="(printer.printerOnline.value || printer.bluetoothDevice.value) ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400 bg-slate-100'"
                    title="Status Printer"
                    @click="isSidebarOpen = true">
-                <i class="pi pi-print text-sm lg:text-base" />
-                <div v-if="!printer.printerOnline.value && !printer.bluetoothDevice.value" class="absolute h-0.5 w-5 rotate-45 rounded-full bg-slate-500" />
+                <i v-if="printer.isConnectingBluetooth.value" class="pi pi-spin pi-spinner text-sm lg:text-base text-blue-500" />
+                <template v-else>
+                  <i class="pi pi-print text-sm lg:text-base" />
+                  <div v-if="!printer.printerOnline.value && !printer.bluetoothDevice.value" class="absolute h-0.5 w-5 rotate-45 rounded-full bg-slate-500" />
+                </template>
               </div>
             </div>
 
