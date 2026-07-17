@@ -158,7 +158,7 @@ const getRankBadgeClass = (idx) => {
           <i class="pi pi-chart-pie text-merchant-primary" /> Ringkasan Umum
         </h2>
         
-        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5 sm:gap-4">
           <div class="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)]">
             <div class="mb-2 sm:mb-3 flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-blue-50 border border-blue-100 text-blue-700">
               <i class="pi pi-shopping-cart text-sm sm:text-lg" />
@@ -181,6 +181,19 @@ const getRankBadgeClass = (idx) => {
             </div>
             <p class="mb-0.5 text-[9px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Kas Sistem</p>
             <p class="truncate text-base sm:text-xl font-black text-slate-900">{{ formatRupiah(analytics.shift.system_cash) }}</p>
+          </div>
+
+          <div class="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)]">
+            <div class="mb-2 sm:mb-3 flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-purple-50 border border-purple-100 text-purple-700">
+              <i class="pi pi-inbox text-sm sm:text-lg" />
+            </div>
+            <p class="mb-0.5 text-[9px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Kas Fisik</p>
+            <p class="truncate text-base sm:text-xl font-black text-slate-900">
+              <template v-if="analytics.shift.closing_cash !== null">
+                {{ formatRupiah(analytics.shift.closing_cash) }}
+              </template>
+              <template v-else>—</template>
+            </p>
           </div>
 
           <div class="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)]">
