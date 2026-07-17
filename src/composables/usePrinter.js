@@ -105,7 +105,12 @@ export function usePrinter() {
     }
 
     isPrinting.value = false
-    // 3. Fallback: browser print dialog
+    // 3. Fallback: browser print dialog HANYA JIKA tidak ada bluetooth device sama sekali
+    if (bluetoothDevice.value) {
+      alert('Koneksi Bluetooth terputus atau bermasalah. Silakan hubungkan ulang.')
+      return false
+    }
+    
     return printViaBrowser(receiptData)
   }
 
@@ -166,11 +171,28 @@ export function usePrinter() {
         ]
       })
 
-      const server = await device.gatt.connect()
-      let service = null
+      // Fungsi helper untuk Retry jika terjadi "GATT Server disconnected"
+      const connectWithRetry = async (maxRetries = 3) => {
+        let attempts = 0
+        while (attempts < maxRetries) {
+          try {
+            attempts++
+            const server = await device.gatt.connect()
+            // Jeda 1 detik agar koneksi stabil sebelum menarik service
+            await new Promise(r => setTimeout(r, 1000))
+            const services = await server.getPrimaryServices()
+            return { server, services }
+          } catch (err) {
+            if (attempts >= maxRetries) throw err
+            console.warn(`Bluetooth reconnect attempt ${attempts} failed, retrying...`, err)
+            await new Promise(r => setTimeout(r, 1000)) // tunggu 1 detik sebelum coba lagi
+          }
+        }
+      }
+
+      const { server, services } = await connectWithRetry(4) // Coba hingga 4 kali
       
-      // Cari service yang tersedia
-      const services = await server.getPrimaryServices()
+      let service = null
       if (services.length > 0) {
         service = services[0] // Gunakan service pertama yang ketemu jika tidak ada yang spesifik
       }
@@ -190,7 +212,7 @@ export function usePrinter() {
       printerOnline.value = true // Anggap online karena terhubung bluetooth
       
       device.addEventListener('gattserverdisconnected', () => {
-        bluetoothDevice.value = null
+        // Jangan nullify device-nya agar sistem tahu user sedang mencoba pakai bluetooth
         bluetoothCharacteristic.value = null
         printerOnline.value = false
       })
