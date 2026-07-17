@@ -164,9 +164,11 @@ const editOrder = (order) => {
           <button 
             type="button" 
             @click="handlePrint(order)"
-            class="flex-1 rounded-xl bg-merchant-primary/10 py-2 text-sm font-bold text-merchant-primary hover:bg-merchant-primary/20 transition"
+            :disabled="printer.isPrinting"
+            class="flex-1 flex items-center justify-center rounded-xl bg-merchant-primary/10 py-2 text-sm font-bold text-merchant-primary hover:bg-merchant-primary/20 transition disabled:opacity-50"
           >
-            <i class="pi pi-print mr-1" /> Print Ulang
+            <i class="pi mr-1" :class="printer.isPrinting ? 'pi-spinner animate-spin' : 'pi-print'" /> 
+            {{ printer.isPrinting ? 'Mencetak...' : 'Print Ulang' }}
           </button>
         </div>
       </div>

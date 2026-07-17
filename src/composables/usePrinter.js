@@ -62,11 +62,14 @@ export function usePrinter() {
             } else {
               await char.writeValue(chunk)
             }
-            // Jeda 10ms antar chunk agar buffer printer bluetooth (yang kecil) tidak penuh/crash
-            await new Promise(r => setTimeout(r, 10))
+            // Jeda 50ms antar chunk agar buffer printer bluetooth (yang kecil) tidak penuh/crash
+            await new Promise(r => setTimeout(r, 50))
           }
           
+          
           isPrinting.value = false
+          console.log("Bluetooth Print: Success")
+          alert("Perintah cetak telah dikirim ke printer Bluetooth.")
           return true
         } catch (bleErr) {
           console.error("BLE Print Error:", bleErr)
