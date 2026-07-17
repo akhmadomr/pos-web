@@ -141,7 +141,9 @@ const getRankBadgeClass = (idx) => {
           </div>
           <div>
             <p class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Tutup</p>
-            <p class="mt-1 text-xs sm:text-base font-bold text-slate-900">{{ dayjs(analytics.shift.closed_at).format('DD MMM, HH:mm') }}</p>
+            <p class="mt-1 text-xs sm:text-base font-bold" :class="analytics.shift.closed_at ? 'text-slate-900' : 'text-amber-500'">
+              {{ analytics.shift.closed_at ? dayjs(analytics.shift.closed_at).format('DD MMM, HH:mm') : 'Shift Aktif' }}
+            </p>
           </div>
           <div>
             <p class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Kas Awal</p>
@@ -187,7 +189,10 @@ const getRankBadgeClass = (idx) => {
             </div>
             <p class="mb-0.5 text-[9px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Selisih Kas</p>
             <p class="truncate text-base sm:text-xl font-black" :class="analytics.shift.cash_difference < 0 ? 'text-rose-600' : 'text-sky-600'">
-              {{ analytics.shift.cash_difference >= 0 ? '+' : '' }}{{ formatRupiah(analytics.shift.cash_difference) }}
+              <template v-if="analytics.shift.cash_difference !== null">
+                {{ analytics.shift.cash_difference >= 0 ? '+' : '' }}{{ formatRupiah(analytics.shift.cash_difference) }}
+              </template>
+              <template v-else>—</template>
             </p>
           </div>
         </div>
