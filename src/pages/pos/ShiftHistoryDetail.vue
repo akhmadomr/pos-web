@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import VueApexCharts from 'vue3-apexcharts'
-import { fetchShiftAnalytics } from '@/api/shifts'
+import { fetchShiftAnalytics, exportShiftDetailPdf, exportShiftDetailExcel } from '@/api/shifts'
 import { formatRupiah } from '@/utils/currency'
 import dayjs from 'dayjs'
 import 'dayjs/locale/id'
@@ -14,6 +14,43 @@ const router = useRouter()
 const loading = ref(true)
 const error = ref('')
 const analytics = ref(null)
+
+const isExportingPdf = ref(false)
+const isExportingExcel = ref(false)
+
+const handleDownload = async (exportFn, type) => {
+  if (type === 'pdf') isExportingPdf.value = true
+  else isExportingExcel.value = true
+
+  try {
+    const response = await exportFn(route.params.id)
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    
+    let filename = `Shift_Detail_${route.params.id}.${type === 'pdf' ? 'pdf' : 'xlsx'}`
+    const disposition = response.headers['content-disposition']
+    if (disposition && disposition.indexOf('attachment') !== -1) {
+      const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition)
+      if (matches != null && matches[1]) filename = matches[1].replace(/['"]/g, '')
+    }
+    
+    link.setAttribute('download', filename)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  } catch(e) {
+    console.error('Export failed', e)
+    alert('Gagal mengekspor data.')
+  } finally {
+    if (type === 'pdf') isExportingPdf.value = false
+    else isExportingExcel.value = false
+  }
+}
+
+const downloadPdf = () => handleDownload(exportShiftDetailPdf, 'pdf')
+const downloadExcel = () => handleDownload(exportShiftDetailExcel, 'excel')
 
 const loadAnalytics = async () => {
   loading.value = true
@@ -107,13 +144,23 @@ const getRankBadgeClass = (idx) => {
 
 <template>
   <div class="space-y-6 pb-10">
-    <div class="flex items-center gap-4">
-      <button @click="goBack" class="flex h-10 w-10 items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition">
-        <i class="pi pi-arrow-left" />
-      </button>
-      <div>
-        <h1 class="text-xl font-black text-slate-900">Detail & Analisis Shift</h1>
-        <p class="text-sm text-slate-500">Statistik performa penjualan selama shift berlangsung</p>
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div class="flex items-center gap-4">
+        <button @click="goBack" class="flex h-10 w-10 items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition">
+          <i class="pi pi-arrow-left" />
+        </button>
+        <div>
+          <h1 class="text-xl font-black text-slate-900">Detail & Analisis Shift</h1>
+          <p class="text-sm text-slate-500">Statistik performa penjualan selama shift berlangsung</p>
+        </div>
+      </div>
+      <div class="flex gap-2" v-if="!loading && !error && analytics">
+        <button @click="downloadPdf" :disabled="isExportingPdf" class="px-4 py-2 bg-rose-50 text-rose-600 border border-rose-200 font-bold rounded-xl hover:bg-rose-100 flex items-center gap-2 transition text-sm disabled:opacity-50">
+          <i :class="isExportingPdf ? 'pi pi-spin pi-spinner' : 'pi pi-file-pdf'"></i> PDF
+        </button>
+        <button @click="downloadExcel" :disabled="isExportingExcel" class="px-4 py-2 bg-emerald-50 text-emerald-600 border border-emerald-200 font-bold rounded-xl hover:bg-emerald-100 flex items-center gap-2 transition text-sm disabled:opacity-50">
+          <i :class="isExportingExcel ? 'pi pi-spin pi-spinner' : 'pi pi-file-excel'"></i> Excel
+        </button>
       </div>
     </div>
 

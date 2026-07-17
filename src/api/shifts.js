@@ -37,3 +37,11 @@ export async function fetchExpenseCategories() {
   const { data } = await client.get('/pos/shifts/expense-categories')
   return data.data
 }
+
+export async function exportShiftDetailPdf(id) {
+  return client.get(`/pos/shifts/${id}/export/pdf`, { responseType: 'blob' })
+}
+
+export async function exportShiftDetailExcel(id) {
+  return client.get(`/pos/shifts/${id}/export/excel`, { responseType: 'blob' })
+}
