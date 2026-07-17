@@ -5,12 +5,13 @@ import { useSettingsStore } from '@/stores/settings.store'
 
 const PRINT_SERVER = import.meta.env.VITE_PRINT_SERVER_URL || 'http://localhost:7878'
 
+const isPrinting = ref(false)
+const lastError = ref(null)
+const printerOnline = ref(false)
+const bluetoothDevice = ref(null)
+const bluetoothCharacteristic = ref(null)
+
 export function usePrinter() {
-  const isPrinting = ref(false)
-  const lastError = ref(null)
-  const printerOnline = ref(false)
-  const bluetoothDevice = ref(null)
-  const bluetoothCharacteristic = ref(null)
 
   /**
    * Periksa apakah local print server aktif.
