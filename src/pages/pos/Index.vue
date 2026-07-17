@@ -118,7 +118,7 @@ onMounted(() => {
     />
 
     <div class="grid min-h-0 flex-1 gap-4 pb-20 lg:grid-cols-5 lg:gap-6 lg:pb-0">
-      <section class="flex min-h-0 flex-col gap-4 lg:col-span-3">
+      <section class="flex min-h-0 min-w-0 flex-col gap-4 lg:col-span-3">
         <CategoryTabs v-model="selectedCategory" :categories="productStore.categories" />
         <ProductSearch v-model="searchQuery" />
         <div class="min-h-0 flex-1 overflow-y-auto pr-1">
