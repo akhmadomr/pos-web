@@ -49,11 +49,11 @@ export function usePrinter() {
       // 1. Coba Bluetooth Printer (jika terhubung)
       if (bluetoothCharacteristic.value) {
         try {
-          const escPosPayload = buildEscPosPayload(receiptData, settings)
+          const escPosPayload = await buildEscPosPayload(receiptData, settings)
           const bytes = jsonToEscPos(escPosPayload)
           
-          // Chunk write dengan batas aman BLE (20 bytes)
-          const CHUNK_SIZE = 20
+          // Chunk write dengan batas aman BLE
+          const CHUNK_SIZE = 40 // Naikkan ke 40 bytes agar lebih cepat
           const char = bluetoothCharacteristic.value
           
           for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
@@ -63,8 +63,8 @@ export function usePrinter() {
             } else {
               await char.writeValue(chunk)
             }
-            // Jeda 50ms antar chunk agar buffer printer bluetooth (yang kecil) tidak penuh/crash
-            await new Promise(r => setTimeout(r, 50))
+            // Jeda 20ms antar chunk (dari 50ms) agar lebih responsif tanpa membuat printer hang
+            await new Promise(r => setTimeout(r, 20))
           }
           
           
@@ -82,7 +82,7 @@ export function usePrinter() {
       }
 
       // 2. Coba ESC/POS server lokal (port 7878)
-      const escPosPayload = buildEscPosPayload(receiptData, settings)
+      const escPosPayload = await buildEscPosPayload(receiptData, settings)
       const response = await fetch(`${PRINT_SERVER}/print`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

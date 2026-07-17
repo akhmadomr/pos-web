@@ -57,7 +57,7 @@ const handlePrint = async (order) => {
     payment_method: order.payment_method || 'Cash',
     cash_received: order.total_amount, // Asumsi uang pas jika tidak ada data dari backend
     change_amount: 0,
-    items: (order.order_items || []).map((i) => ({
+    items: (order.items || []).map((i) => ({
       name: i.product_name + (i.variant_label ? ` - ${i.variant_label}` : '') + (i.addons_label ? ` (+${i.addons_label})` : ''),
       qty: i.quantity,
       unit_price: Number(i.unit_price) + Number(i.addons_price),

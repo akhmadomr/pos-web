@@ -30,7 +30,7 @@ const handleLogout = async () => {
         <div class="flex items-center gap-4">
           <img :src="logoUrl" alt="Kopirex" class="h-14 w-auto drop-shadow-lg" />
           <div>
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Kopirex POS</p>
+            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Kasir Kopirex</p>
             <h1 class="text-2xl font-black text-slate-900">Buka Shift</h1>
           </div>
         </div>
