@@ -44,6 +44,23 @@ const toggleFullscreen = () => {
 const clockLabel = computed(() => now.value.format('HH:mm:ss'))
 const dateLabel = computed(() => now.value.format('dddd, DD MMM YYYY'))
 
+const isShiftOverdue = computed(() => {
+  const schedule = authStore.shift?.schedule
+  if (!schedule || !schedule.end_time) return false
+
+  const currentTime = now.value.format('HH:mm:ss')
+  const startTime = schedule.start_time
+  const endTime = schedule.end_time
+
+  if (startTime > endTime) {
+     // Overnight shift (e.g. 22:00 to 06:00)
+     return currentTime > endTime && currentTime < startTime
+  }
+  
+  // Normal shift
+  return currentTime > endTime
+})
+
 const navItems = [
   { label: 'Kasir', path: '/pos', icon: 'pi-shopping-cart' },
   { label: 'Order', path: '/pos/orders', icon: 'pi-receipt' },
@@ -273,6 +290,17 @@ onUnmounted(() => {
           </router-link>
         </nav>
       </header>
+
+      <!-- Sticky Shift Overdue Banner -->
+      <div v-if="authStore.hasActiveShift && isShiftOverdue" class="sticky top-[60px] lg:top-[105px] z-30 flex flex-col sm:flex-row items-center justify-between gap-2 bg-rose-500 px-4 py-2 text-white shadow-md">
+        <div class="flex items-center gap-2 text-sm font-bold">
+          <i class="pi pi-exclamation-triangle text-lg" />
+          <span>Waktu {{ authStore.shift.schedule.name }} telah berakhir ({{ authStore.shift.schedule.end_time.substring(0, 5) }}). Harap segera Tutup Shift.</span>
+        </div>
+        <button @click="showCloseModal = true" class="shrink-0 rounded-lg bg-white px-3 py-1.5 text-xs font-black text-rose-600 shadow-sm transition hover:bg-rose-50">
+          Tutup Shift Sekarang
+        </button>
+      </div>
 
       <main class="flex-1 p-2 sm:p-4 lg:p-6">
         <router-view />

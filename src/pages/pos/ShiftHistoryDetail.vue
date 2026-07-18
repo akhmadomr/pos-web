@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import VueApexCharts from 'vue3-apexcharts'
-import { fetchShiftAnalytics, exportShiftDetailPdf, exportShiftDetailExcel } from '@/api/shifts'
+import { fetchShiftAnalytics, fetchDailyShiftAnalytics, exportShiftDetailPdf, exportShiftDetailExcel } from '@/api/shifts'
 import { formatRupiah } from '@/utils/currency'
 import dayjs from 'dayjs'
 import 'dayjs/locale/id'
@@ -13,7 +13,12 @@ const route = useRoute()
 const router = useRouter()
 const loading = ref(true)
 const error = ref('')
-const analytics = ref(null)
+const dailyData = ref(null)
+const shiftAnalytics = ref({})
+const activeTab = ref('daily')
+
+// currentView holds the data currently being displayed (daily data or specific shift data)
+const currentView = ref(null)
 
 const isExportingPdf = ref(false)
 const isExportingExcel = ref(false)
@@ -23,18 +28,18 @@ const handleDownload = async (exportFn, type) => {
   else isExportingExcel.value = true
 
   try {
-    const response = await exportFn(route.params.id)
+    const response = await exportFn(route.params.date)
     const url = window.URL.createObjectURL(new Blob([response.data]))
-    const link = document.createElement('a')
-    link.href = url
-    
-    let filename = `Shift_Detail_${route.params.id}.${type === 'pdf' ? 'pdf' : 'xlsx'}`
+    // ...
+    let filename = `Shift_Detail_${route.params.date}.${type === 'pdf' ? 'pdf' : 'xlsx'}`
     const disposition = response.headers['content-disposition']
     if (disposition && disposition.indexOf('attachment') !== -1) {
       const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition)
       if (matches != null && matches[1]) filename = matches[1].replace(/['"]/g, '')
     }
     
+    const link = document.createElement('a')
+    link.href = url
     link.setAttribute('download', filename)
     document.body.appendChild(link)
     link.click()
@@ -52,10 +57,15 @@ const handleDownload = async (exportFn, type) => {
 const downloadPdf = () => handleDownload(exportShiftDetailPdf, 'pdf')
 const downloadExcel = () => handleDownload(exportShiftDetailExcel, 'excel')
 
-const loadAnalytics = async () => {
+const loadDailyAnalytics = async () => {
   loading.value = true
   try {
-    analytics.value = await fetchShiftAnalytics(route.params.id)
+    dailyData.value = await fetchDailyShiftAnalytics(route.params.date)
+    currentView.value = {
+      isDaily: true,
+      summary: dailyData.value.summary,
+      data: dailyData.value.data
+    }
   } catch (err) {
     error.value = 'Gagal memuat detail shift.'
   } finally {
@@ -63,8 +73,47 @@ const loadAnalytics = async () => {
   }
 }
 
+const selectTab = async (tab) => {
+  activeTab.value = tab
+  if (tab === 'daily') {
+    currentView.value = {
+      isDaily: true,
+      summary: dailyData.value.summary,
+      data: dailyData.value.data
+    }
+  } else {
+    if (!shiftAnalytics.value[tab]) {
+      loading.value = true
+      try {
+         shiftAnalytics.value[tab] = await fetchShiftAnalytics(tab)
+      } catch(e) {
+         console.error(e)
+      } finally {
+         loading.value = false
+      }
+    }
+    currentView.value = {
+      isDaily: false,
+      shift: shiftAnalytics.value[tab].shift,
+      summary: {
+         total_transactions: shiftAnalytics.value[tab].shift.total_transactions,
+         total_revenue: shiftAnalytics.value[tab].shift.total_revenue,
+         system_cash: shiftAnalytics.value[tab].shift.system_cash,
+         closing_cash: shiftAnalytics.value[tab].shift.closing_cash,
+         cash_difference: shiftAnalytics.value[tab].shift.cash_difference,
+      },
+      data: {
+         hourly_trend: shiftAnalytics.value[tab].hourly_trend,
+         top_products: shiftAnalytics.value[tab].top_products,
+         expenses: shiftAnalytics.value[tab].expenses,
+         orders: shiftAnalytics.value[tab].orders,
+      }
+    }
+  }
+}
+
 onMounted(() => {
-  loadAnalytics()
+  loadDailyAnalytics()
 })
 
 const goBack = () => {
@@ -75,15 +124,15 @@ const goBack = () => {
 const premiumColors = ["#194a7a", "#44a4b4", "#f4c46c", "#ff5e5e", "#10b981", "#f59e0b"]
 
 const trendSeries = computed(() => {
-  if (!analytics.value?.hourly_trend) return []
+  if (!currentView.value?.data?.hourly_trend) return []
   return [
-    { name: "Pesanan", type: "area", data: analytics.value.hourly_trend.map(d => d.transactions) },
-    { name: "Pendapatan (Rp)", type: "area", data: analytics.value.hourly_trend.map(d => d.revenue) }
+    { name: "Pesanan", type: "area", data: currentView.value.data.hourly_trend.map(d => d.transactions) },
+    { name: "Pendapatan (Rp)", type: "area", data: currentView.value.data.hourly_trend.map(d => d.revenue) }
   ]
 })
 
 const trendOptions = computed(() => {
-  const data = analytics.value?.hourly_trend || []
+  const data = currentView.value?.data?.hourly_trend || []
   if (!data.length) return {}
   
   let maxTransIdx = 0
@@ -154,7 +203,7 @@ const getRankBadgeClass = (idx) => {
           <p class="text-sm text-slate-500">Statistik performa penjualan selama shift berlangsung</p>
         </div>
       </div>
-      <div class="flex gap-2" v-if="!loading && !error && analytics">
+      <div class="flex gap-2" v-if="!loading && !error && dailyData">
         <button @click="downloadPdf" :disabled="isExportingPdf" class="px-4 py-2 bg-rose-50 text-rose-600 border border-rose-200 font-bold rounded-xl hover:bg-rose-100 flex items-center gap-2 transition text-sm disabled:opacity-50">
           <i :class="isExportingPdf ? 'pi pi-spin pi-spinner' : 'pi pi-file-pdf'"></i> PDF
         </button>
@@ -164,9 +213,29 @@ const getRankBadgeClass = (idx) => {
       </div>
     </div>
 
+    <!-- Tabs -->
+    <div v-if="dailyData" class="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
+      <button 
+        @click="selectTab('daily')" 
+        class="px-5 py-2.5 rounded-t-xl font-bold text-sm transition-colors border-b-2"
+        :class="activeTab === 'daily' ? 'border-merchant-primary text-merchant-primary bg-merchant-primary/5' : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'"
+      >
+        <i class="pi pi-calendar-day mr-2"></i> Ringkasan Harian
+      </button>
+      <button 
+        v-for="(s, idx) in dailyData.shifts" 
+        :key="s.id"
+        @click="selectTab(s.id)" 
+        class="px-5 py-2.5 rounded-t-xl font-bold text-sm transition-colors border-b-2"
+        :class="activeTab === s.id ? 'border-merchant-primary text-merchant-primary bg-merchant-primary/5' : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'"
+      >
+        <i class="pi pi-clock mr-2"></i> {{ s.schedule?.name ?? `Shift ${idx + 1}` }}
+      </button>
+    </div>
+
     <div v-if="loading" class="flex flex-col items-center justify-center py-24 gap-4">
       <i class="pi pi-spin pi-spinner text-4xl text-merchant-primary" />
-      <p class="text-sm text-gray-500 font-medium">Memuat analisis shift...</p>
+      <p class="text-sm text-gray-500 font-medium">Memuat data...</p>
     </div>
 
     <div v-else-if="error" class="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
@@ -174,27 +243,27 @@ const getRankBadgeClass = (idx) => {
       <p class="font-bold text-red-700">{{ error }}</p>
     </div>
 
-    <template v-else-if="analytics">
-      <!-- Info Shift Card -->
-      <div class="rounded-2xl border border-slate-100 bg-white p-4 sm:p-6 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
+    <template v-else-if="currentView">
+      <!-- Info Shift Card (Hanya muncul jika bukan tab harian) -->
+      <div v-if="!currentView.isDaily && currentView.shift" class="rounded-2xl border border-slate-100 bg-white p-4 sm:p-6 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
         <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
           <div>
             <p class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Kasir</p>
-            <p class="mt-1 text-sm sm:text-lg font-black text-slate-900 truncate">{{ analytics.shift.cashier?.name || '-' }}</p>
+            <p class="mt-1 text-sm sm:text-lg font-black text-slate-900 truncate">{{ currentView.shift.cashier?.name || '-' }}</p>
           </div>
           <div>
             <p class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Mulai</p>
-            <p class="mt-1 text-xs sm:text-base font-bold text-slate-900">{{ dayjs(analytics.shift.opened_at).format('DD MMM, HH:mm') }}</p>
+            <p class="mt-1 text-xs sm:text-base font-bold text-slate-900">{{ dayjs(currentView.shift.opened_at).format('DD MMM, HH:mm') }}</p>
           </div>
           <div>
             <p class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Tutup</p>
-            <p class="mt-1 text-xs sm:text-base font-bold" :class="analytics.shift.closed_at ? 'text-slate-900' : 'text-amber-500'">
-              {{ analytics.shift.closed_at ? dayjs(analytics.shift.closed_at).format('DD MMM, HH:mm') : 'Shift Aktif' }}
+            <p class="mt-1 text-xs sm:text-base font-bold" :class="currentView.shift.closed_at ? 'text-slate-900' : 'text-amber-500'">
+              {{ currentView.shift.closed_at ? dayjs(currentView.shift.closed_at).format('DD MMM, HH:mm') : 'Shift Aktif' }}
             </p>
           </div>
           <div>
             <p class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Kas Awal</p>
-            <p class="mt-1 text-sm sm:text-base font-black text-slate-900">{{ formatRupiah(analytics.shift.opening_cash) }}</p>
+            <p class="mt-1 text-sm sm:text-base font-black text-slate-900">{{ formatRupiah(currentView.shift.opening_cash) }}</p>
           </div>
         </div>
       </div>
@@ -211,7 +280,7 @@ const getRankBadgeClass = (idx) => {
               <i class="pi pi-shopping-cart text-sm sm:text-lg" />
             </div>
             <p class="mb-0.5 text-[9px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Transaksi</p>
-            <p class="truncate text-lg sm:text-2xl font-black text-slate-900">{{ analytics.shift.total_transactions }}</p>
+            <p class="truncate text-lg sm:text-2xl font-black text-slate-900">{{ currentView.summary.total_transactions }}</p>
           </div>
           
           <div class="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)]">
@@ -219,7 +288,7 @@ const getRankBadgeClass = (idx) => {
               <i class="pi pi-money-bill text-sm sm:text-lg" />
             </div>
             <p class="mb-0.5 text-[9px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Pendapatan</p>
-            <p class="truncate text-base sm:text-xl font-black text-slate-900">{{ formatRupiah(analytics.shift.total_revenue) }}</p>
+            <p class="truncate text-base sm:text-xl font-black text-slate-900">{{ formatRupiah(currentView.summary.total_revenue) }}</p>
           </div>
 
           <div class="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)]">
@@ -227,7 +296,7 @@ const getRankBadgeClass = (idx) => {
               <i class="pi pi-wallet text-sm sm:text-lg" />
             </div>
             <p class="mb-0.5 text-[9px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Kas Sistem</p>
-            <p class="truncate text-base sm:text-xl font-black text-slate-900">{{ formatRupiah(analytics.shift.system_cash) }}</p>
+            <p class="truncate text-base sm:text-xl font-black text-slate-900">{{ formatRupiah(currentView.summary.system_cash) }}</p>
           </div>
 
           <div class="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)]">
@@ -236,21 +305,21 @@ const getRankBadgeClass = (idx) => {
             </div>
             <p class="mb-0.5 text-[9px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Kas Fisik</p>
             <p class="truncate text-base sm:text-xl font-black text-slate-900">
-              <template v-if="analytics.shift.closing_cash !== null">
-                {{ formatRupiah(analytics.shift.closing_cash) }}
+              <template v-if="currentView.summary.closing_cash !== null">
+                {{ formatRupiah(currentView.summary.closing_cash) }}
               </template>
               <template v-else>—</template>
             </p>
           </div>
 
           <div class="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)]">
-            <div class="mb-2 sm:mb-3 flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl border" :class="analytics.shift.cash_difference < 0 ? 'bg-rose-50 border-rose-100 text-rose-700' : 'bg-sky-50 border-sky-100 text-sky-700'">
+            <div class="mb-2 sm:mb-3 flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl border" :class="currentView.summary.cash_difference < 0 ? 'bg-rose-50 border-rose-100 text-rose-700' : 'bg-sky-50 border-sky-100 text-sky-700'">
               <i class="pi pi-sort-alt text-sm sm:text-lg" />
             </div>
             <p class="mb-0.5 text-[9px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Selisih Kas</p>
-            <p class="truncate text-base sm:text-xl font-black" :class="analytics.shift.cash_difference < 0 ? 'text-rose-600' : 'text-sky-600'">
-              <template v-if="analytics.shift.cash_difference !== null">
-                {{ analytics.shift.cash_difference >= 0 ? '+' : '' }}{{ formatRupiah(analytics.shift.cash_difference) }}
+            <p class="truncate text-base sm:text-xl font-black" :class="currentView.summary.cash_difference < 0 ? 'text-rose-600' : 'text-sky-600'">
+              <template v-if="currentView.summary.cash_difference !== null">
+                {{ currentView.summary.cash_difference >= 0 ? '+' : '' }}{{ formatRupiah(currentView.summary.cash_difference) }}
               </template>
               <template v-else>—</template>
             </p>
@@ -259,7 +328,7 @@ const getRankBadgeClass = (idx) => {
       </div>
 
       <!-- Chart Tren Per Jam -->
-      <div v-if="analytics.hourly_trend.length > 0" class="rounded-2xl border border-slate-100 bg-white p-3 sm:p-6 pb-0 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] overflow-hidden">
+      <div v-if="currentView.data.hourly_trend.length > 0" class="rounded-2xl border border-slate-100 bg-white p-3 sm:p-6 pb-0 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] overflow-hidden">
         <h2 class="mb-2 sm:mb-6 px-1 flex items-center gap-2 text-sm sm:text-base font-black uppercase tracking-widest text-slate-900">
           <i class="pi pi-chart-line text-merchant-primary" /> Tren Transaksi Per Jam
         </h2>
@@ -276,7 +345,7 @@ const getRankBadgeClass = (idx) => {
             <i class="pi pi-box text-merchant-primary" /> Produk Terlaris
           </h2>
           <div class="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-            <div v-for="(p, i) in analytics.top_products" :key="i"
+            <div v-for="(p, i) in currentView.data.top_products" :key="i"
                  :class="['flex items-center gap-4 rounded-xl border p-3 transition-colors', getRankClass(i)]">
               <span :class="['flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-black shadow-sm', getRankBadgeClass(i)]">
                   {{ i + 1 }}
@@ -289,7 +358,7 @@ const getRankBadgeClass = (idx) => {
                 <p class="text-[10px] font-black text-emerald-600">{{ formatRupiah(p.total_revenue) }}</p>
               </div>
             </div>
-            <p v-if="!analytics.top_products.length" class="py-4 text-center text-sm text-slate-400">Belum ada produk terjual</p>
+            <p v-if="!currentView.data.top_products.length" class="py-4 text-center text-sm text-slate-400">Belum ada produk terjual</p>
           </div>
         </div>
 
@@ -298,8 +367,8 @@ const getRankBadgeClass = (idx) => {
           <h2 class="mb-4 flex items-center gap-2 text-base font-black uppercase tracking-widest text-slate-900">
             <i class="pi pi-money-bill text-rose-500" /> Daftar Pengeluaran
           </h2>
-          <div v-if="analytics.expenses.length" class="space-y-3">
-            <div v-for="exp in analytics.expenses" :key="exp.id" class="flex flex-col rounded-xl border border-slate-100 bg-slate-50 p-4">
+          <div v-if="currentView.data.expenses.length" class="space-y-3">
+            <div v-for="exp in currentView.data.expenses" :key="exp.id" class="flex flex-col rounded-xl border border-slate-100 bg-slate-50 p-4">
               <div class="flex items-center justify-between mb-2">
                 <span class="text-sm font-bold text-slate-700">{{ exp.category }}</span>
                 <span class="rounded-lg bg-white px-3 py-1 text-sm font-black text-rose-600 shadow-sm border border-slate-100">{{ formatRupiah(exp.amount) }}</span>
@@ -312,9 +381,9 @@ const getRankBadgeClass = (idx) => {
             <p class="text-sm text-slate-400">Tidak ada pengeluaran tambahan pada shift ini</p>
           </div>
 
-          <div v-if="analytics.shift.notes" class="mt-6 rounded-xl border border-amber-100 bg-amber-50 p-4">
+          <div v-if="!currentView.isDaily && currentView.shift?.notes" class="mt-6 rounded-xl border border-amber-100 bg-amber-50 p-4">
             <p class="text-xs font-bold uppercase text-amber-700 mb-1">Catatan Shift</p>
-            <p class="text-sm text-amber-900">{{ analytics.shift.notes }}</p>
+            <p class="text-sm text-amber-900">{{ currentView.shift.notes }}</p>
           </div>
         </div>
       </div>
@@ -324,7 +393,7 @@ const getRankBadgeClass = (idx) => {
         <h2 class="mb-4 flex items-center gap-2 text-base font-black uppercase tracking-widest text-slate-900">
           <i class="pi pi-receipt text-merchant-primary" /> Riwayat Pesanan
         </h2>
-        <div v-if="analytics.orders && analytics.orders.length" class="overflow-x-auto">
+        <div v-if="currentView.data.orders && currentView.data.orders.length" class="overflow-x-auto">
           <table class="w-full text-left text-sm">
             <thead class="border-b border-slate-100 bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-400">
               <tr>
@@ -337,7 +406,7 @@ const getRankBadgeClass = (idx) => {
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
-              <tr v-for="order in analytics.orders" :key="order.id" class="transition-colors hover:bg-slate-50">
+              <tr v-for="order in currentView.data.orders" :key="order.id" class="transition-colors hover:bg-slate-50">
                 <td class="p-3 text-slate-500">{{ dayjs(order.created_at).format('HH:mm') }}</td>
                 <td class="p-3 font-bold text-slate-900">{{ order.order_number }}</td>
                 <td class="p-3 text-slate-600">
