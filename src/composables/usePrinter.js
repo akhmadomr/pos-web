@@ -10,6 +10,7 @@ const lastError = ref(null)
 const printerOnline = ref(false)
 const bluetoothDevice = ref(null)
 const bluetoothCharacteristic = ref(null)
+const isConnectingBluetooth = ref(false)
 
 export function usePrinter() {
 
@@ -45,15 +46,27 @@ export function usePrinter() {
       receipt: settingsStore.receipt
     }
 
+    // Auto-prompt Bluetooth jika belum terhubung tapi user sebelumnya menggunakan bluetooth
+    // Karena printReceipt dipanggil oleh klik user (user gesture), kita diizinkan memanggil requestDevice()
+    if (!bluetoothCharacteristic.value && localStorage.getItem('prefer_bluetooth_printer') === '1') {
+      let reconnected = await autoConnectBluetooth()
+      if (!reconnected) {
+        reconnected = await connectBluetooth()
+      }
+      if (!reconnected) {
+         console.warn("Koneksi Bluetooth batal, mencoba fallback ke print server...")
+      }
+    }
+
     try {
       // 1. Coba Bluetooth Printer (jika terhubung)
       if (bluetoothCharacteristic.value) {
         try {
-          const escPosPayload = buildEscPosPayload(receiptData, settings)
+          const escPosPayload = await buildEscPosPayload(receiptData, settings)
           const bytes = jsonToEscPos(escPosPayload)
           
-          // Chunk write dengan batas aman BLE (20 bytes)
-          const CHUNK_SIZE = 20
+          // Chunk write dengan batas aman BLE
+          const CHUNK_SIZE = 40 // Naikkan ke 40 bytes agar lebih cepat
           const char = bluetoothCharacteristic.value
           
           for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
@@ -63,8 +76,8 @@ export function usePrinter() {
             } else {
               await char.writeValue(chunk)
             }
-            // Jeda 50ms antar chunk agar buffer printer bluetooth (yang kecil) tidak penuh/crash
-            await new Promise(r => setTimeout(r, 50))
+            // Jeda 20ms antar chunk (dari 50ms) agar lebih responsif tanpa membuat printer hang
+            await new Promise(r => setTimeout(r, 20))
           }
           
           
@@ -82,7 +95,7 @@ export function usePrinter() {
       }
 
       // 2. Coba ESC/POS server lokal (port 7878)
-      const escPosPayload = buildEscPosPayload(receiptData, settings)
+      const escPosPayload = await buildEscPosPayload(receiptData, settings)
       const response = await fetch(`${PRINT_SERVER}/print`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -157,7 +170,60 @@ export function usePrinter() {
   }
 
   /**
-   * Hubungkan ke Printer Bluetooth (Web Bluetooth API)
+   * Fungsi Helper untuk setup device BLE
+   */
+  async function setupBluetoothDevice(device) {
+    // Fungsi helper untuk Retry jika terjadi "GATT Server disconnected"
+    const connectWithRetry = async (maxRetries = 3) => {
+      let attempts = 0
+      while (attempts < maxRetries) {
+        try {
+          attempts++
+          const server = await device.gatt.connect()
+          // Jeda 1 detik agar koneksi stabil sebelum menarik service
+          await new Promise(r => setTimeout(r, 1000))
+          const services = await server.getPrimaryServices()
+          return { server, services }
+        } catch (err) {
+          if (attempts >= maxRetries) throw err
+          console.warn(`Bluetooth reconnect attempt ${attempts} failed, retrying...`, err)
+          await new Promise(r => setTimeout(r, 1000)) // tunggu 1 detik sebelum coba lagi
+        }
+      }
+    }
+
+    const { server, services } = await connectWithRetry(4) // Coba hingga 4 kali
+    
+    let service = null
+    if (services.length > 0) {
+      service = services[0] // Gunakan service pertama yang ketemu jika tidak ada yang spesifik
+    }
+    
+    if (!service) throw new Error('Printer tidak memiliki layanan yang cocok.')
+    
+    const characteristics = await service.getCharacteristics()
+    if (characteristics.length === 0) throw new Error('Tidak dapat menemukan jalur komunikasi printer.')
+    
+    // Gunakan characteristic pertama yang memiliki properti 'write' atau 'writeWithoutResponse'
+    const characteristic = characteristics.find(c => c.properties.write || c.properties.writeWithoutResponse)
+    
+    if (!characteristic) throw new Error('Printer tidak mendukung fitur penulisan (write).')
+
+    bluetoothDevice.value = device
+    bluetoothCharacteristic.value = characteristic
+    printerOnline.value = true // Anggap online karena terhubung bluetooth
+    
+    device.addEventListener('gattserverdisconnected', () => {
+      // Jangan nullify device-nya agar sistem tahu user sedang mencoba pakai bluetooth
+      bluetoothCharacteristic.value = null
+      printerOnline.value = false
+    })
+    
+    return true
+  }
+
+  /**
+   * Hubungkan ke Printer Bluetooth (Web Bluetooth API) manual via klik user
    */
   async function connectBluetooth() {
     if (!navigator.bluetooth) {
@@ -165,6 +231,7 @@ export function usePrinter() {
       return false
     }
     
+    isConnectingBluetooth.value = true
     try {
       const device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
@@ -175,58 +242,51 @@ export function usePrinter() {
         ]
       })
 
-      // Fungsi helper untuk Retry jika terjadi "GATT Server disconnected"
-      const connectWithRetry = async (maxRetries = 3) => {
-        let attempts = 0
-        while (attempts < maxRetries) {
+      const success = await setupBluetoothDevice(device)
+      if (success) {
+        localStorage.setItem('prefer_bluetooth_printer', '1')
+      }
+      return success
+    } catch (err) {
+      console.error('Bluetooth Connect Error:', err)
+      // Hanya munculkan alert jika errornya bukan karena user membatalkan (cancel)
+      if (!err.message.includes('User cancelled')) {
+        alert('Gagal menghubungkan Bluetooth: ' + err.message)
+      }
+      return false
+    } finally {
+      isConnectingBluetooth.value = false
+    }
+  }
+
+  /**
+   * Auto reconnect ke device yang sudah pernah di-pair sebelumnya (tanpa klik user)
+   */
+  async function autoConnectBluetooth() {
+    if (!navigator.bluetooth || typeof navigator.bluetooth.getDevices !== 'function') {
+      return false
+    }
+    
+    isConnectingBluetooth.value = true
+    try {
+      const devices = await navigator.bluetooth.getDevices()
+      if (devices && devices.length > 0) {
+        for (const device of devices) {
           try {
-            attempts++
-            const server = await device.gatt.connect()
-            // Jeda 1 detik agar koneksi stabil sebelum menarik service
-            await new Promise(r => setTimeout(r, 1000))
-            const services = await server.getPrimaryServices()
-            return { server, services }
-          } catch (err) {
-            if (attempts >= maxRetries) throw err
-            console.warn(`Bluetooth reconnect attempt ${attempts} failed, retrying...`, err)
-            await new Promise(r => setTimeout(r, 1000)) // tunggu 1 detik sebelum coba lagi
+            await setupBluetoothDevice(device)
+            console.log('Auto connected to Bluetooth printer:', device.name)
+            return true // Berhasil konek, hentikan loop
+          } catch (e) {
+            console.warn('Gagal auto-connect ke printer', device.name, e)
           }
         }
       }
-
-      const { server, services } = await connectWithRetry(4) // Coba hingga 4 kali
-      
-      let service = null
-      if (services.length > 0) {
-        service = services[0] // Gunakan service pertama yang ketemu jika tidak ada yang spesifik
-      }
-      
-      if (!service) throw new Error('Printer tidak memiliki layanan yang cocok.')
-      
-      const characteristics = await service.getCharacteristics()
-      if (characteristics.length === 0) throw new Error('Tidak dapat menemukan jalur komunikasi printer.')
-      
-      // Gunakan characteristic pertama yang memiliki properti 'write' atau 'writeWithoutResponse'
-      const characteristic = characteristics.find(c => c.properties.write || c.properties.writeWithoutResponse)
-      
-      if (!characteristic) throw new Error('Printer tidak mendukung fitur penulisan (write).')
-
-      bluetoothDevice.value = device
-      bluetoothCharacteristic.value = characteristic
-      printerOnline.value = true // Anggap online karena terhubung bluetooth
-      
-      device.addEventListener('gattserverdisconnected', () => {
-        // Jangan nullify device-nya agar sistem tahu user sedang mencoba pakai bluetooth
-        bluetoothCharacteristic.value = null
-        printerOnline.value = false
-      })
-      
-      return true
-    } catch (err) {
-      console.error('Bluetooth Connect Error:', err)
-      alert('Gagal menghubungkan Bluetooth: ' + err.message)
-      return false
+    } catch (e) {
+      console.warn('Auto-connect Bluetooth API error:', e)
+    } finally {
+      isConnectingBluetooth.value = false
     }
+    return false
   }
 
   return {
@@ -234,9 +294,11 @@ export function usePrinter() {
     lastError,
     printerOnline,
     bluetoothDevice,
+    isConnectingBluetooth,
     checkPrinterStatus,
     printReceipt,
     printViaBrowser,
-    connectBluetooth
+    connectBluetooth,
+    autoConnectBluetooth
   }
 }

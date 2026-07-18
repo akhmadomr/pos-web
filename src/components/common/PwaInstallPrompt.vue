@@ -62,7 +62,7 @@ const dismiss = () => {
           </div>
           <div class="flex-1">
             <h3 class="font-bold text-slate-900">Install Aplikasi POS</h3>
-            <p class="mt-1 text-xs text-slate-500">Install Kopirex POS ke layar utama Anda agar bisa diakses secara offline dan lebih cepat!</p>
+            <p class="mt-1 text-xs text-slate-500">Install Kasir Kopirex ke layar utama Anda agar bisa diakses secara offline dan lebih cepat!</p>
           </div>
           <button
             type="button"

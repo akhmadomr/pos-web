@@ -26,15 +26,8 @@ const loadHistory = async (page = 1) => {
   }
 }
 
-const goToDetail = (id) => {
-  router.push({ name: 'pos-shift-history-detail', params: { id } })
-}
-
-const formatDuration = (start, end) => {
-  if (!start || !end) return '-'
-  const diffHours = dayjs(end).diff(dayjs(start), 'hour')
-  const diffMinutes = dayjs(end).diff(dayjs(start), 'minute') % 60
-  return `${diffHours}j ${diffMinutes}m`
+const goToDetail = (date) => {
+  router.push(`/pos/shifts/daily/${date}`)
 }
 
 onMounted(() => {
@@ -63,34 +56,34 @@ onMounted(() => {
       <div v-else class="space-y-4">
         <div 
           v-for="shift in shifts" 
-          :key="shift.id"
+          :key="shift.date"
           class="flex cursor-pointer flex-col gap-4 rounded-xl border border-slate-100 bg-slate-50 p-4 transition-colors hover:border-merchant-primary/30 hover:bg-merchant-primary/5 sm:flex-row sm:items-center sm:justify-between"
-          @click="goToDetail(shift.id)"
+          @click="goToDetail(shift.date)"
         >
           <div class="flex items-center gap-4">
             <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm text-merchant-primary">
               <i class="pi pi-calendar text-xl" />
             </div>
             <div>
-              <p class="font-bold text-slate-900">{{ dayjs(shift.opened_at).format('DD MMMM YYYY') }}</p>
+              <p class="font-bold text-slate-900">{{ dayjs(shift.date).format('DD MMMM YYYY') }}</p>
               <p class="text-sm text-slate-500">
-                {{ dayjs(shift.opened_at).format('HH:mm') }} - {{ dayjs(shift.closed_at).format('HH:mm') }} 
-                <span class="font-medium text-slate-400">({{ formatDuration(shift.opened_at, shift.closed_at) }})</span>
+                Terdiri dari <span class="font-bold">{{ shift.shift_count }} Shift</span>
               </p>
+              <div class="mt-1 flex gap-1 flex-wrap">
+                <span v-for="(name, idx) in shift.shifts" :key="idx" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-600">
+                  {{ name }}
+                </span>
+              </div>
             </div>
           </div>
           
           <div class="flex items-center gap-6 sm:text-right">
             <div>
-              <p class="text-xs font-bold uppercase text-slate-400">Kasir</p>
-              <p class="text-sm font-semibold text-slate-800">{{ shift.cashier?.name || 'Unknown' }}</p>
-            </div>
-            <div>
-              <p class="text-xs font-bold uppercase text-slate-400">Pesanan</p>
+              <p class="text-xs font-bold uppercase text-slate-400">Total Transaksi</p>
               <p class="text-sm font-bold text-slate-900">{{ shift.total_transactions }}</p>
             </div>
             <div>
-              <p class="text-xs font-bold uppercase text-slate-400">Pendapatan</p>
+              <p class="text-xs font-bold uppercase text-slate-400">Total Pendapatan</p>
               <p class="text-sm font-black text-emerald-600">{{ formatRupiah(shift.total_revenue) }}</p>
             </div>
             <i class="pi pi-chevron-right text-slate-400 ml-2" />

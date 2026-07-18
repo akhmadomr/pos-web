@@ -44,6 +44,23 @@ const toggleFullscreen = () => {
 const clockLabel = computed(() => now.value.format('HH:mm:ss'))
 const dateLabel = computed(() => now.value.format('dddd, DD MMM YYYY'))
 
+const isShiftOverdue = computed(() => {
+  const schedule = authStore.shift?.schedule
+  if (!schedule || !schedule.end_time) return false
+
+  const currentTime = now.value.format('HH:mm:ss')
+  const startTime = schedule.start_time
+  const endTime = schedule.end_time
+
+  if (startTime > endTime) {
+     // Overnight shift (e.g. 22:00 to 06:00)
+     return currentTime > endTime && currentTime < startTime
+  }
+  
+  // Normal shift
+  return currentTime > endTime
+})
+
 const navItems = [
   { label: 'Kasir', path: '/pos', icon: 'pi-shopping-cart' },
   { label: 'Order', path: '/pos/orders', icon: 'pi-receipt' },
@@ -64,6 +81,8 @@ const onShiftClosed = () => {
 
 onMounted(() => {
   settingsStore.load()
+  printer.autoConnectBluetooth()
+  
   clockTimer = window.setInterval(() => {
     now.value = dayjs()
   }, 1000)
@@ -146,8 +165,9 @@ onUnmounted(() => {
             :class="printer.bluetoothDevice.value ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'"
             @click="printer.connectBluetooth()"
           >
-            <i class="pi pi-bluetooth" />
-            {{ printer.bluetoothDevice.value ? 'Bluetooth Terhubung' : 'Koneksikan Bluetooth' }}
+            <i v-if="printer.isConnectingBluetooth.value" class="pi pi-spin pi-spinner text-blue-500" />
+            <i v-else class="pi pi-bluetooth" />
+            {{ printer.isConnectingBluetooth.value ? 'Menyambungkan...' : (printer.bluetoothDevice.value ? 'Bluetooth Terhubung' : 'Koneksikan Bluetooth') }}
           </button>
           
           <div class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-emerald-600">
@@ -208,8 +228,11 @@ onUnmounted(() => {
                    :class="(printer.printerOnline.value || printer.bluetoothDevice.value) ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400 bg-slate-100'"
                    title="Status Printer"
                    @click="isSidebarOpen = true">
-                <i class="pi pi-print text-sm lg:text-base" />
-                <div v-if="!printer.printerOnline.value && !printer.bluetoothDevice.value" class="absolute h-0.5 w-5 rotate-45 rounded-full bg-slate-500" />
+                <i v-if="printer.isConnectingBluetooth.value" class="pi pi-spin pi-spinner text-sm lg:text-base text-blue-500" />
+                <template v-else>
+                  <i class="pi pi-print text-sm lg:text-base" />
+                  <div v-if="!printer.printerOnline.value && !printer.bluetoothDevice.value" class="absolute h-0.5 w-5 rotate-45 rounded-full bg-slate-500" />
+                </template>
               </div>
             </div>
 
@@ -267,6 +290,17 @@ onUnmounted(() => {
           </router-link>
         </nav>
       </header>
+
+      <!-- Sticky Shift Overdue Banner -->
+      <div v-if="authStore.hasActiveShift && isShiftOverdue" class="sticky top-[60px] lg:top-[105px] z-30 flex flex-col sm:flex-row items-center justify-between gap-2 bg-rose-500 px-4 py-2 text-white shadow-md">
+        <div class="flex items-center gap-2 text-sm font-bold">
+          <i class="pi pi-exclamation-triangle text-lg" />
+          <span>Waktu {{ authStore.shift.schedule.name }} telah berakhir ({{ authStore.shift.schedule.end_time.substring(0, 5) }}). Harap segera Tutup Shift.</span>
+        </div>
+        <button @click="showCloseModal = true" class="shrink-0 rounded-lg bg-white px-3 py-1.5 text-xs font-black text-rose-600 shadow-sm transition hover:bg-rose-50">
+          Tutup Shift Sekarang
+        </button>
+      </div>
 
       <main class="flex-1 p-2 sm:p-4 lg:p-6">
         <router-view />

@@ -33,7 +33,26 @@ export async function fetchShiftAnalytics(shiftId) {
   return data.data
 }
 
+export async function fetchDailyShiftAnalytics(date) {
+  const { data } = await client.get(`/pos/shifts/daily/${date}`)
+  return data
+}
+
 export async function fetchExpenseCategories() {
   const { data } = await client.get('/pos/shifts/expense-categories')
   return data.data
+}
+
+export async function exportShiftDetailPdf(id) {
+  if (String(id).includes('-')) {
+    return client.get(`/pos/shifts/daily/${id}/export/pdf`, { responseType: 'blob' })
+  }
+  return client.get(`/pos/shifts/${id}/export/pdf`, { responseType: 'blob' })
+}
+
+export async function exportShiftDetailExcel(id) {
+  if (String(id).includes('-')) {
+    return client.get(`/pos/shifts/daily/${id}/export/excel`, { responseType: 'blob' })
+  }
+  return client.get(`/pos/shifts/${id}/export/excel`, { responseType: 'blob' })
 }

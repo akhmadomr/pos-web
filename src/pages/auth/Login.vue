@@ -66,7 +66,7 @@ const handleLogin = async () => {
           <div class="mb-4 flex items-center justify-center">
             <img :src="logoUrl" alt="Kopirex" class="h-16 w-auto" />
           </div>
-          <h1 class="text-3xl font-black tracking-tight text-white">Kopirex POS</h1>
+          <h1 class="text-3xl font-black tracking-tight text-white">Kasir Kopirex</h1>
           <p class="mt-2 font-medium text-white/70">Masuk sebagai kasir</p>
         </div>
 
