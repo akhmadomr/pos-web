@@ -21,6 +21,7 @@ const now = ref(dayjs())
 const showCloseModal = ref(false)
 const shiftSummaryRef = ref(null)
 let clockTimer = null
+let printerReconnectTimer = null
 const isFullscreen = ref(false)
 const isSidebarOpen = ref(false)
 const showDropdown = ref(false)
@@ -86,6 +87,9 @@ onMounted(() => {
   clockTimer = window.setInterval(() => {
     now.value = dayjs()
   }, 1000)
+
+  // Polling dihapus karena spamming connect() di background menyebabkan Android Bluetooth stack crash (NetworkError).
+  // Sebagai gantinya, koneksi otomatis dipanggil sekali saat load, dan dipicu manual lewat ikon print.
 
   document.addEventListener('fullscreenchange', () => {
     isFullscreen.value = !!document.fullscreenElement
@@ -225,9 +229,9 @@ onUnmounted(() => {
                 <div v-if="!isOnline" class="absolute h-0.5 w-5 rotate-45 rounded-full bg-slate-500" />
               </div>
               <div class="relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full"
-                   :class="(printer.printerOnline.value || printer.bluetoothDevice.value) ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400 bg-slate-100'"
-                   title="Status Printer"
-                   @click="isSidebarOpen = true">
+                   :class="(printer.printerOnline.value || printer.bluetoothDevice.value) ? 'text-emerald-500 bg-emerald-50 hover:bg-emerald-100' : 'text-slate-400 bg-slate-100 hover:bg-slate-200'"
+                   title="Status Printer (Klik untuk sambungkan manual)"
+                   @click="printer.connectBluetooth()">
                 <i v-if="printer.isConnectingBluetooth.value" class="pi pi-spin pi-spinner text-sm lg:text-base text-blue-500" />
                 <template v-else>
                   <i class="pi pi-print text-sm lg:text-base" />
