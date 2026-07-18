@@ -180,14 +180,24 @@ export function usePrinter() {
         try {
           attempts++
           const server = await device.gatt.connect()
-          // Jeda 1 detik agar koneksi stabil sebelum menarik service
-          await new Promise(r => setTimeout(r, 1000))
+          // Jeda 2 detik agar koneksi stabil sebelum menarik service
+          await new Promise(r => setTimeout(r, 2000))
           const services = await server.getPrimaryServices()
           return { server, services }
         } catch (err) {
           if (attempts >= maxRetries) throw err
           console.warn(`Bluetooth reconnect attempt ${attempts} failed, retrying...`, err)
-          await new Promise(r => setTimeout(r, 1000)) // tunggu 1 detik sebelum coba lagi
+          
+          if (device.gatt.connected) {
+             device.gatt.disconnect()
+          }
+
+          // Jika error adalah NotFoundError (biasanya karena belum siap), beri jeda lebih lama
+          if (err.name === 'NotFoundError') {
+             await new Promise(r => setTimeout(r, 2000))
+          } else {
+             await new Promise(r => setTimeout(r, 1500))
+          }
         }
       }
     }
@@ -226,6 +236,11 @@ export function usePrinter() {
    * Hubungkan ke Printer Bluetooth (Web Bluetooth API) manual via klik user
    */
   async function connectBluetooth() {
+    if (isConnectingBluetooth.value) {
+      console.warn('Bluetooth connection is already in progress.');
+      return false;
+    }
+
     if (!navigator.bluetooth) {
       alert('Browser Anda tidak mendukung fitur Bluetooth (Gunakan Google Chrome atau Edge terbaru).')
       return false
@@ -238,7 +253,9 @@ export function usePrinter() {
         optionalServices: [
           '000018f0-0000-1000-8000-00805f9b34fb', // Standard BLE Printer
           'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // Custom Printer Service
-          '0000e781-0000-1000-8000-00805f9b34fb' 
+          '0000e781-0000-1000-8000-00805f9b34fb',
+          '49535343-fe7d-4ae5-8fa9-9fafd205e455', // ISSC (some generic printers)
+          '0000ff00-0000-1000-8000-00805f9b34fb'  // Generic Serial
         ]
       })
 
@@ -263,6 +280,10 @@ export function usePrinter() {
    * Auto reconnect ke device yang sudah pernah di-pair sebelumnya (tanpa klik user)
    */
   async function autoConnectBluetooth() {
+    if (isConnectingBluetooth.value) {
+      return false;
+    }
+
     if (!navigator.bluetooth || typeof navigator.bluetooth.getDevices !== 'function') {
       return false
     }
