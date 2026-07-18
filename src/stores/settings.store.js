@@ -11,23 +11,40 @@ export const useSettingsStore = defineStore('settings', () => {
   })
 
   const load = async () => {
+    // 1. Load dari localStorage terlebih dahulu (offline support)
+    const cached = localStorage.getItem('pos_settings')
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached)
+        applySettings(parsed)
+      } catch (e) {
+        console.error('Failed to parse cached settings', e)
+      }
+    }
+
+    // 2. Fetch dari network
     try {
       const data = await fetchSettings()
-      raw.value = data
-      
-      data.forEach(s => {
-        if (s.group === 'tax') {
-          if (s.key === 'enabled') tax.value.enabled = String(s.value)
-          if (s.key === 'rate') tax.value.rate = Number(s.value)
-        }
-        if (s.group === 'receipt') {
-          receipt.value[s.key] = s.value
-        }
-      })
+      localStorage.setItem('pos_settings', JSON.stringify(data))
+      applySettings(data)
     } catch (error) {
-      console.error('Failed to load settings:', error)
+      console.warn('Failed to load settings from network (offline mode active):', error)
     }
   }
+
+  const applySettings = (data) => {
+    raw.value = data
+    data.forEach(s => {
+      if (s.group === 'tax') {
+        if (s.key === 'enabled') tax.value.enabled = String(s.value)
+        if (s.key === 'rate') tax.value.rate = Number(s.value)
+      }
+      if (s.group === 'receipt') {
+        receipt.value[s.key] = s.value
+      }
+    })
+  }
+
 
   return {
     raw,
