@@ -74,12 +74,64 @@ const handlePrint = async (order) => {
 
 import { useRouter } from 'vue-router'
 const router = useRouter()
-const editOrder = (order) => {
-  // Bawa ke halaman index/kasir tapi memuat order ini?
-  // Atau karena tidak ada EditOrder.vue, kita beri peringatan.
-  if (order.status === 'completed') {
-    alert('Transaksi yang sudah selesai tidak dapat diubah isinya. Anda hanya bisa membatalkannya melalui menu detail/aktif (jika diizinkan).')
+const showEditModal = ref(false)
+const editingOrder = ref(null)
+const editReason = ref('')
+const isSubmittingEdit = ref(false)
+
+const openEditModal = (order) => {
+  if (order.status === 'cancelled') {
+    alert('Pesanan ini sudah dibatalkan.')
     return
+  }
+  if (order.edit_status === 'pending') {
+    alert('Pesanan ini sudah dalam pengajuan edit dan menunggu persetujuan admin.')
+    return
+  }
+  
+  editingOrder.value = order
+  editReason.value = ''
+  showEditModal.value = true
+}
+
+const closeEditModal = () => {
+  showEditModal.value = false
+  editingOrder.value = null
+  editReason.value = ''
+}
+
+const showDetailModal = ref(false)
+const detailOrder = ref(null)
+
+const openDetailModal = (order) => {
+  detailOrder.value = order
+  showDetailModal.value = true
+}
+
+const closeDetailModal = () => {
+  showDetailModal.value = false
+  detailOrder.value = null
+}
+
+import client from '@/api/client'
+
+const submitEditRequest = async () => {
+  if (!editReason.value.trim()) {
+    alert('Alasan edit harus diisi.')
+    return
+  }
+  isSubmittingEdit.value = true
+  try {
+    await client.post(`/pos/orders/${editingOrder.value.id}/request-edit`, {
+      reason: editReason.value
+    })
+    alert('Pengajuan edit berhasil dikirim. Silahkan menghubungi admin.')
+    closeEditModal()
+    loadOrders()
+  } catch (err) {
+    alert(err.response?.data?.message || 'Gagal mengirim pengajuan edit.')
+  } finally {
+    isSubmittingEdit.value = false
   }
 }
 </script>
@@ -128,9 +180,9 @@ const editOrder = (order) => {
         :key="order.id"
         class="glass-card flex flex-col overflow-hidden"
       >
-        <div class="flex items-start justify-between border-b border-slate-100 p-4">
+        <div class="flex flex-col sm:flex-row sm:items-start justify-between border-b border-slate-100 p-4 gap-3 sm:gap-0">
           <div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
               <span class="font-bold text-slate-900">{{ order.order_number }}</span>
               <span
                 class="rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider"
@@ -138,10 +190,14 @@ const editOrder = (order) => {
               >
                 {{ getStatusBadge(order.status).label }}
               </span>
+              <span v-if="order.edit_status === 'pending'" class="rounded-lg bg-orange-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-orange-700">
+                Menunggu Persetujuan Edit
+              </span>
             </div>
-            <p class="text-xs text-slate-500">{{ dayjs(order.created_at).format('DD MMM YYYY, HH:mm') }}</p>
+            <p class="text-xs text-slate-500 mt-1">{{ dayjs(order.created_at).format('DD MMM YYYY, HH:mm') }}</p>
+            <p class="text-sm font-semibold mt-1">Pelanggan: {{ order.customer_name || 'Kopirex' }}</p>
           </div>
-          <div class="text-right">
+          <div class="text-left sm:text-right">
             <p class="font-bold text-merchant-primary">{{ formatRupiah(order.total_amount) }}</p>
             <p class="text-xs font-semibold uppercase text-slate-400">
               {{ order.order_type === 'dine_in' ? `Dine In — Meja ${order.table?.table_number ?? '-'}` : 'Take Away' }}
@@ -161,8 +217,16 @@ const editOrder = (order) => {
         <div class="flex items-center gap-2 border-t border-slate-100 p-3 bg-white">
           <button 
             type="button" 
-            @click="editOrder(order)"
+            @click="openDetailModal(order)"
             class="flex-1 rounded-xl border border-slate-200 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 transition"
+          >
+            <i class="pi pi-eye mr-1" /> Detail
+          </button>
+          <button 
+            type="button" 
+            @click="openEditModal(order)"
+            :disabled="order.edit_status === 'pending' || order.status === 'cancelled'"
+            class="flex-1 rounded-xl border border-slate-200 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <i class="pi pi-pencil mr-1" /> Edit
           </button>
@@ -174,6 +238,117 @@ const editOrder = (order) => {
           >
             <i class="pi mr-1" :class="printingOrderId === order.id ? 'pi-spinner animate-spin' : 'pi-print'" /> 
             {{ printingOrderId === order.id ? 'Mencetak...' : 'Print Ulang' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Pengajuan Edit -->
+    <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" @click="closeEditModal" />
+      <div class="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <h3 class="mb-2 text-xl font-black text-slate-900">Pengajuan Edit Pesanan</h3>
+        <p class="mb-4 text-sm text-slate-500">
+          Pesanan <strong>{{ editingOrder?.order_number }}</strong>. Masukkan alasan Anda mengajukan edit/pembatalan. Setelah disetujui Admin, pesanan akan dibatalkan agar Anda dapat menginput ulang.
+        </p>
+        <textarea
+          v-model="editReason"
+          rows="3"
+          placeholder="Misal: Salah input item, atau pelanggan minta ganti ukuran"
+          class="mb-4 w-full rounded-xl border border-slate-200 p-3 text-sm focus:border-merchant-primary focus:outline-none focus:ring-1 focus:ring-merchant-primary"
+        ></textarea>
+        <div class="flex gap-2">
+          <button @click="closeEditModal" class="flex-1 rounded-xl bg-slate-100 py-3 text-sm font-bold text-slate-600 hover:bg-slate-200">
+            Batal
+          </button>
+          <button @click="submitEditRequest" :disabled="isSubmittingEdit || !editReason.trim()" class="flex-1 rounded-xl bg-merchant-primary py-3 text-sm font-bold text-white hover:bg-merchant-primary/90 disabled:opacity-50">
+            {{ isSubmittingEdit ? 'Mengirim...' : 'Kirim Pengajuan' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Detail Pesanan -->
+    <div v-if="showDetailModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" @click="closeDetailModal" />
+      <div class="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl flex flex-col">
+        <div class="sticky top-0 bg-white p-6 border-b border-slate-100 flex justify-between items-center z-10">
+          <h3 class="text-xl font-black text-slate-900">Detail Pesanan</h3>
+          <button @click="closeDetailModal" class="text-slate-400 hover:text-slate-600">
+            <i class="pi pi-times text-xl" />
+          </button>
+        </div>
+        <div class="p-6 space-y-6 flex-1 overflow-y-auto">
+          <!-- Info Pesanan -->
+          <div class="space-y-3 bg-slate-50 p-4 rounded-xl">
+            <div class="flex justify-between">
+              <span class="text-sm text-slate-500">No. Order</span>
+              <span class="text-sm font-bold">{{ detailOrder?.order_number }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-sm text-slate-500">Pelanggan</span>
+              <span class="text-sm font-bold">{{ detailOrder?.customer_name || 'Kopirex' }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-sm text-slate-500">Waktu</span>
+              <span class="text-sm font-bold">{{ dayjs(detailOrder?.created_at).format('DD MMM YYYY, HH:mm') }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-sm text-slate-500">Tipe Order</span>
+              <span class="text-sm font-bold">{{ detailOrder?.order_type === 'dine_in' ? 'Dine In' : 'Take Away' }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-sm text-slate-500">Metode Pembayaran</span>
+              <span class="text-sm font-bold capitalize">{{ detailOrder?.payment_method || '-' }}</span>
+            </div>
+          </div>
+          
+          <!-- Info Produk -->
+          <div>
+            <h4 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-3">Daftar Produk</h4>
+            <ul class="space-y-3">
+              <li v-for="item in detailOrder?.order_items" :key="item.id" class="flex justify-between text-sm">
+                <div>
+                  <span class="font-bold text-slate-900">{{ item.quantity }}x</span>
+                  <span class="ml-2 font-semibold text-slate-700">{{ item.product_name }}</span>
+                  <p v-if="item.variant_label" class="ml-6 text-xs text-slate-500">{{ item.variant_label }}</p>
+                  <p v-if="item.addons_label" class="ml-6 text-xs text-slate-500">+ {{ item.addons_label }}</p>
+                </div>
+                <div class="font-bold text-slate-900 text-right">
+                  {{ formatRupiah(Number(item.total_price)) }}
+                </div>
+              </li>
+            </ul>
+          </div>
+          
+          <hr class="border-slate-100" />
+          
+          <!-- Subtotal & Grand Total -->
+          <div class="space-y-2">
+            <div class="flex justify-between text-sm">
+              <span class="text-slate-500">Subtotal</span>
+              <span class="font-bold">{{ formatRupiah(detailOrder?.subtotal) }}</span>
+            </div>
+            <div v-if="detailOrder?.discount_amount > 0" class="flex justify-between text-sm text-emerald-600">
+              <span>Diskon</span>
+              <span class="font-bold">-{{ formatRupiah(detailOrder?.discount_amount) }}</span>
+            </div>
+            <div v-if="detailOrder?.tax_amount > 0" class="flex justify-between text-sm">
+              <span class="text-slate-500">PPN</span>
+              <span class="font-bold">{{ formatRupiah(detailOrder?.tax_amount) }}</span>
+            </div>
+            <div class="flex justify-between text-base mt-2 pt-2 border-t border-slate-200">
+              <span class="font-black text-slate-900">Total</span>
+              <span class="font-black text-merchant-primary">{{ formatRupiah(detailOrder?.total_amount) }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="p-6 border-t border-slate-100 bg-slate-50 rounded-b-2xl flex gap-2">
+          <button @click="closeDetailModal" class="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-bold text-slate-600 hover:bg-slate-100">
+            Tutup
+          </button>
+          <button @click="handlePrint(detailOrder)" class="flex-1 rounded-xl bg-merchant-primary py-3 text-sm font-bold text-white hover:bg-merchant-primary/90">
+            <i class="pi pi-print mr-2" /> Print Struk
           </button>
         </div>
       </div>

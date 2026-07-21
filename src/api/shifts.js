@@ -43,6 +43,11 @@ export async function fetchExpenseCategories() {
   return data.data
 }
 
+export async function fetchCriticalIngredients() {
+  const { data } = await client.get('/pos/shifts/critical-ingredients')
+  return data.data
+}
+
 export async function exportShiftDetailPdf(id) {
   if (String(id).includes('-')) {
     return client.get(`/pos/shifts/daily/${id}/export/pdf`, { responseType: 'blob' })

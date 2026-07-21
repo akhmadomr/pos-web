@@ -31,6 +31,7 @@ function persistCart(state) {
       tableId: state.tableId,
       customerId: state.customerId,
       customer: state.customer,
+      customerName: state.customerName,
       voucherCode: state.voucherCode,
       voucherData: state.voucherData,
     }),
@@ -45,6 +46,7 @@ export const useCartStore = defineStore('cart', () => {
   const tableId = ref(saved?.tableId ?? null)
   const customerId = ref(saved?.customerId ?? null)
   const customer = ref(saved?.customer ?? null)
+  const customerName = ref(saved?.customerName ?? '')
   const voucherCode = ref(saved?.voucherCode ?? null)
   const voucherData = ref(saved?.voucherData ?? null)
 
@@ -88,7 +90,7 @@ export const useCartStore = defineStore('cart', () => {
   const itemCount = computed(() => items.value.reduce((sum, item) => sum + item.quantity, 0))
 
   watch(
-    [items, orderType, tableId, customerId, customer, voucherCode, voucherData],
+    [items, orderType, tableId, customerId, customer, customerName, voucherCode, voucherData],
     () => {
       persistCart({
         items: items.value,
@@ -96,6 +98,7 @@ export const useCartStore = defineStore('cart', () => {
         tableId: tableId.value,
         customerId: customerId.value,
         customer: customer.value,
+        customerName: customerName.value,
         voucherCode: voucherCode.value,
         voucherData: voucherData.value,
       })
@@ -156,6 +159,7 @@ export const useCartStore = defineStore('cart', () => {
     voucherData.value = null
     customerId.value = null
     customer.value = null
+    customerName.value = ''
   }
 
   function setOrderType(type) {
@@ -173,10 +177,16 @@ export const useCartStore = defineStore('cart', () => {
     if (!data) {
       customerId.value = null
       customer.value = null
+      customerName.value = ''
       return
     }
     customerId.value = data.id
     customer.value = data
+    customerName.value = data.name
+  }
+
+  function setCustomerName(name) {
+    customerName.value = name
   }
 
   function applyVoucher(code, apiResult) {
@@ -196,6 +206,7 @@ export const useCartStore = defineStore('cart', () => {
       order_type: orderType.value,
       table_id: orderType.value === 'dine_in' ? tableId.value : null,
       customer_id: customerId.value,
+      customer_name: customerName.value?.trim() || null,
       voucher_code: voucherCode.value,
       items: items.value.map((item) => ({
         product_id: item.product_id,
@@ -213,6 +224,7 @@ export const useCartStore = defineStore('cart', () => {
     tableId,
     customerId,
     customer,
+    customerName,
     voucherCode,
     voucherData,
     discountLabel,
@@ -229,6 +241,7 @@ export const useCartStore = defineStore('cart', () => {
     setOrderType,
     setTable,
     setCustomer,
+    setCustomerName,
     applyVoucher,
     clearVoucher,
     buildOrderPayload,

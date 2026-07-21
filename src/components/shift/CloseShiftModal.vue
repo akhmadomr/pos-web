@@ -6,7 +6,7 @@ import AppButton from '@/components/common/AppButton.vue'
 import AppModal from '@/components/common/AppModal.vue'
 import AppNumpad from '@/components/common/AppNumpad.vue'
 import AppCreatableSelect from '@/components/common/AppCreatableSelect.vue'
-import { closeShift, fetchShiftSummary, fetchExpenseCategories } from '@/api/shifts'
+import { closeShift, fetchShiftSummary, fetchExpenseCategories, fetchCriticalIngredients } from '@/api/shifts'
 import { useAuthStore } from '@/stores/auth.store'
 import { formatRupiah } from '@/utils/currency'
 import { PAYMENT_METHOD_LABELS } from '@/utils/shift'
@@ -23,6 +23,8 @@ const emit = defineEmits(['close', 'closed'])
 const router = useRouter()
 const authStore = useAuthStore()
 
+const step = ref(1)
+
 const summary = ref(null)
 const closingCash = ref('')
 const notes = ref('')
@@ -33,6 +35,8 @@ const apiWarnings = ref([])
 
 const expenses = ref([])
 const expenseCategories = ref([])
+
+const stockOpnames = ref([])
 
 const addExpense = () => {
   expenses.value.push({ category: '', qty: 1, price_per_item: '', amount: 0 })
@@ -82,12 +86,22 @@ const loadSummary = async () => {
   loadingSummary.value = true
   error.value = ''
   try {
-    const [summaryData, categories] = await Promise.all([
+    const [summaryData, categories, ingredients] = await Promise.all([
       fetchShiftSummary(authStore.user?.outlet_id),
       fetchExpenseCategories(),
+      fetchCriticalIngredients(),
     ])
     summary.value = summaryData
     expenseCategories.value = categories.map(c => ({ label: c, value: c }))
+    stockOpnames.value = ingredients.map(ing => ({
+      ingredient_id: ing.id,
+      name: ing.name,
+      unit: ing.unit,
+      expected_stock: ing.expected_stock,
+      actual_stock: ing.expected_stock,
+      is_matching: true,
+      notes: '',
+    }))
   } catch (err) {
     error.value = err.response?.data?.message || 'Gagal memuat ringkasan shift.'
     summary.value = null
@@ -100,6 +114,7 @@ watch(
   () => props.show,
   (visible) => {
     if (visible) {
+      step.value = 1
       closingCash.value = ''
       notes.value = ''
       expenses.value = []
@@ -131,10 +146,19 @@ const submitCloseShift = async () => {
         amount: Number(e.amount),
       }))
 
+    const formattedStockOpnames = stockOpnames.value
+      .filter(s => !s.is_matching)
+      .map(s => ({
+        ingredient_id: s.ingredient_id,
+        actual_stock: Number(s.actual_stock),
+        notes: s.notes,
+      }))
+
     const response = await closeShift({
       closing_cash: closingCashAmount.value,
       notes: notes.value.trim() || null,
       expenses: formattedExpenses,
+      stock_opnames: formattedStockOpnames,
     })
 
     authStore.setShift(null)
@@ -163,11 +187,11 @@ const submitCloseShift = async () => {
     </div>
 
     <template v-else-if="summary">
-      <div class="grid gap-6 lg:grid-cols-2">
+      <div v-if="step === 1" class="grid gap-6 lg:grid-cols-2">
         <div class="space-y-4">
           <h4 class="text-sm font-bold uppercase tracking-wider text-slate-400">Ringkasan Shift</h4>
 
-          <div class="grid gap-3 sm:grid-cols-2">
+          <div class="grid gap-3 grid-cols-2">
             <div class="rounded-2xl border border-slate-100 bg-slate-50 p-4">
               <p class="text-xs font-bold uppercase text-slate-400">Total Transaksi</p>
               <p class="mt-1 text-2xl font-black text-slate-900">{{ summary.total_transactions }}</p>
@@ -284,8 +308,8 @@ const submitCloseShift = async () => {
 
           <AppNumpad
             v-model="closingCash"
-            confirm-label="Tutup Shift"
-            @confirm="submitCloseShift"
+            confirm-label="Lanjut Konfirmasi Stok"
+            @confirm="() => { if (closingCashAmount >= 0) step = 2 }"
           />
 
           <div
@@ -332,15 +356,84 @@ const submitCloseShift = async () => {
         </div>
       </div>
 
+      <div v-else-if="step === 2" class="space-y-4">
+        <!-- Stock Opname Section -->
+        <div v-if="stockOpnames.length" class="rounded-2xl border border-slate-100 bg-white p-4">
+          <p class="mb-3 text-xs font-bold uppercase text-slate-400">Konfirmasi Stok Fisik Semua Bahan Baku</p>
+          <div class="space-y-4 max-h-[60vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200">
+            <div v-for="(opname, index) in stockOpnames" :key="opname.ingredient_id" class="rounded-xl border border-slate-100 bg-slate-50 p-3">
+              <div class="flex items-start justify-between">
+                <div>
+                  <p class="font-bold text-slate-900">{{ opname.name }}</p>
+                  <p class="text-xs text-slate-500">Sistem: {{ Number(opname.expected_stock).toLocaleString('id-ID') }} {{ opname.unit }}</p>
+                </div>
+                <label class="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer">
+                  <input type="checkbox" v-model="opname.is_matching" class="h-5 w-5 rounded border-slate-300 text-merchant-primary focus:ring-merchant-primary" />
+                  Sesuai
+                </label>
+              </div>
+              
+              <div v-if="!opname.is_matching" class="mt-3 grid gap-3 sm:grid-cols-2 pt-3 border-t border-slate-200/50">
+                <div>
+                  <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Stok Fisik Aktual</label>
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="opname.actual_stock"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
+                    />
+                    <span class="text-xs font-semibold text-slate-500">{{ opname.unit }}</span>
+                  </div>
+                </div>
+                <div>
+                  <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Alasan Selisih</label>
+                  <input
+                    v-model="opname.notes"
+                    type="text"
+                    placeholder="Misal: Tumpah"
+                    class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="text-center py-8">
+          <p class="text-slate-500 text-sm">Tidak ada bahan baku untuk dikonfirmasi.</p>
+        </div>
+      </div>
+
       <AppAlert v-if="error" type="error" :message="error" class="mt-4" dismissible @dismiss="error = ''" />
     </template>
 
     <template #footer>
-      <AppButton variant="secondary" @click="handleClose">Batal</AppButton>
-      <AppButton variant="danger" :loading="loading" @click="submitCloseShift">
-        <i class="pi pi-sign-out" />
-        Tutup Shift
-      </AppButton>
+      <div v-if="step === 1" class="flex gap-2 w-full">
+        <AppButton variant="secondary" @click="handleClose" class="flex-1">Batal</AppButton>
+        <AppButton 
+          variant="primary" 
+          class="flex-1"
+          :disabled="closingCashAmount < 0 || closingCash === ''"
+          @click="step = 2"
+        >
+          <span class="hidden sm:inline">Lanjut Konfirmasi Stok</span>
+          <span class="sm:hidden">Lanjut</span>
+          <i class="pi pi-arrow-right ml-1 sm:ml-2" />
+        </AppButton>
+      </div>
+      <div v-else-if="step === 2" class="flex gap-2 w-full">
+        <AppButton variant="secondary" @click="step = 1" class="flex-1">
+          <i class="pi pi-arrow-left mr-1 sm:mr-2" /> 
+          <span class="hidden sm:inline">Kembali</span>
+          <span class="sm:hidden">Back</span>
+        </AppButton>
+        <AppButton variant="danger" :loading="loading" @click="submitCloseShift" class="flex-1">
+          <i class="pi pi-sign-out sm:mr-1" />
+          <span class="hidden sm:inline">Tutup Shift</span>
+          <span class="sm:hidden">Tutup</span>
+        </AppButton>
+      </div>
     </template>
   </AppModal>
 </template>
