@@ -61,10 +61,18 @@ export function generateReceiptHTML(data, settings = {}) {
       case 'static_items':
         htmlBody += `<table style="margin-bottom:6px;width:100%;">`
         for (const item of data.items ?? []) {
+          let baseTotal = item.unit_price * item.qty
           htmlBody += `
             <tr><td colspan="2" style="padding-bottom:0;font-weight:600">${escapeHtml(item.name)}</td></tr>
-            <tr><td style="padding-left:8px;color:#555">${item.qty}x ${formatRupiah(item.unit_price)}</td><td style="text-align:right;font-weight:600">${formatRupiah(item.total)}</td></tr>
+            <tr><td style="padding-left:8px;color:#555">${item.qty}x ${formatRupiah(item.unit_price)}</td><td style="text-align:right;font-weight:600">${formatRupiah(baseTotal)}</td></tr>
           `
+          if (item.addons_label && item.addons_price > 0) {
+            let addonsTotal = item.addons_price * item.qty
+            htmlBody += `
+              <tr><td colspan="2" style="padding-bottom:0;padding-left:8px;color:#555">+ ${escapeHtml(item.addons_label)}</td></tr>
+              <tr><td style="padding-left:16px;color:#777">${item.qty}x ${formatRupiah(item.addons_price)}</td><td style="text-align:right;color:#555">${formatRupiah(addonsTotal)}</td></tr>
+            `
+          }
         }
         htmlBody += `</table><hr class="divider-dash" style="margin-bottom:6px;"/>`
         break
@@ -187,7 +195,11 @@ export async function buildEscPosPayload(data, settings = {}) {
       case 'static_items':
         for (const item of data.items ?? []) {
           lines.push({ type: 'text', value: item.name, bold: true })
-          lines.push({ type: 'keyvalue', key: `  ${item.qty}x ${formatRupiah(item.unit_price)}`, value: formatRupiah(item.total) })
+          lines.push({ type: 'keyvalue', key: `  ${item.qty}x ${formatRupiah(item.unit_price)}`, value: formatRupiah(item.unit_price * item.qty) })
+          if (item.addons_label && item.addons_price > 0) {
+            lines.push({ type: 'text', value: `  + ${item.addons_label}`, bold: false })
+            lines.push({ type: 'keyvalue', key: `    ${item.qty}x ${formatRupiah(item.addons_price)}`, value: formatRupiah(item.addons_price * item.qty) })
+          }
         }
         lines.push({ type: 'separator', style: 'dashed' })
         break

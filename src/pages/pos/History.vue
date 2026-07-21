@@ -57,10 +57,12 @@ const handlePrint = async (order) => {
     payment_method: order.payment_method || 'Cash',
     cash_received: order.total_amount, // Asumsi uang pas jika tidak ada data dari backend
     change_amount: 0,
-    items: (order.items || []).map((i) => ({
-      name: i.product_name + (i.variant_label ? ` - ${i.variant_label}` : '') + (i.addons_label ? ` (+${i.addons_label})` : ''),
+    items: (order.order_items || []).map((i) => ({
+      name: i.product_name + (i.variant_label ? ` - ${i.variant_label}` : ''),
+      addons_label: i.addons_label,
       qty: i.quantity,
-      unit_price: Number(i.unit_price) + Number(i.addons_price),
+      unit_price: Number(i.unit_price),
+      addons_price: Number(i.addons_price),
       total: Number(i.total_price),
     })),
   }
@@ -307,15 +309,24 @@ const submitEditRequest = async () => {
           <div>
             <h4 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-3">Daftar Produk</h4>
             <ul class="space-y-3">
-              <li v-for="item in detailOrder?.order_items" :key="item.id" class="flex justify-between text-sm">
-                <div>
-                  <span class="font-bold text-slate-900">{{ item.quantity }}x</span>
-                  <span class="ml-2 font-semibold text-slate-700">{{ item.product_name }}</span>
-                  <p v-if="item.variant_label" class="ml-6 text-xs text-slate-500">{{ item.variant_label }}</p>
-                  <p v-if="item.addons_label" class="ml-6 text-xs text-slate-500">+ {{ item.addons_label }}</p>
+              <li v-for="item in detailOrder?.order_items" :key="item.id" class="text-sm">
+                <div class="flex justify-between">
+                  <div>
+                    <span class="font-bold text-slate-900">{{ item.quantity }}x</span>
+                    <span class="ml-2 font-semibold text-slate-700">{{ item.product_name }}</span>
+                    <p v-if="item.variant_label" class="ml-6 text-xs text-slate-500">{{ item.variant_label }}</p>
+                  </div>
+                  <div class="font-bold text-slate-900 text-right">
+                    {{ formatRupiah(Number(item.unit_price) * Number(item.quantity)) }}
+                  </div>
                 </div>
-                <div class="font-bold text-slate-900 text-right">
-                  {{ formatRupiah(Number(item.total_price)) }}
+                <div v-if="item.addons_label && Number(item.addons_price) > 0" class="flex justify-between mt-1">
+                  <div>
+                    <p class="ml-6 text-xs text-slate-500">+ {{ item.addons_label }}</p>
+                  </div>
+                  <div class="font-bold text-slate-500 text-right text-xs">
+                    {{ formatRupiah(Number(item.addons_price) * Number(item.quantity)) }}
+                  </div>
                 </div>
               </li>
             </ul>
