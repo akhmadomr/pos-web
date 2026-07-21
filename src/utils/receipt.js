@@ -51,6 +51,7 @@ export function generateReceiptHTML(data, settings = {}) {
         htmlBody += `
           <table style="margin:6px 0;width:100%;">
             <tr class="label-row"><td>No. Order</td><td style="text-align:right">${escapeHtml(data.order_number ?? '-')}</td></tr>
+            <tr class="label-row"><td>Pelanggan</td><td style="text-align:right">${escapeHtml(data.customer_name ?? '-')}</td></tr>
             <tr class="label-row"><td>Kasir</td><td style="text-align:right">${escapeHtml(data.cashier_name ?? '-')}</td></tr>
             <tr class="label-row"><td>Waktu</td><td style="text-align:right">${escapeHtml(data.timestamp ?? '-')}</td></tr>
           </table>
@@ -178,6 +179,7 @@ export async function buildEscPosPayload(data, settings = {}) {
       case 'static_order_info':
         lines.push({ type: 'align', value: 'left' })
         lines.push({ type: 'keyvalue', key: 'No. Order', value: data.order_number ?? '-' })
+        lines.push({ type: 'keyvalue', key: 'Pelanggan', value: data.customer_name ?? '-' })
         lines.push({ type: 'keyvalue', key: 'Kasir', value: data.cashier_name ?? '-' })
         lines.push({ type: 'keyvalue', key: 'Waktu', value: data.timestamp ?? '-' })
         lines.push({ type: 'separator', style: 'dashed' })

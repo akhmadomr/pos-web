@@ -27,7 +27,7 @@ const emit = defineEmits(['close', 'add'])
 
 const quantity = ref(1)
 const notes = ref('')
-const selectedAddons = ref([])
+const addonCounts = reactive({})
 const variantSelections = reactive({})
 
 const variantGroups = computed(() => {
@@ -42,9 +42,19 @@ const unitPrice = computed(() => {
   return calculateItemUnitPrice(props.product, variantSelections)
 })
 
+const getAddonIdsArray = () => {
+  const ids = []
+  Object.entries(addonCounts).forEach(([id, qty]) => {
+    for (let i = 0; i < qty; i++) {
+      ids.push(Number(id))
+    }
+  })
+  return ids
+}
+
 const addonsPrice = computed(() => {
   if (!props.product) return 0
-  return calculateAddonsPrice(props.product, selectedAddons.value)
+  return calculateAddonsPrice(props.product, getAddonIdsArray())
 })
 
 const lineTotal = computed(() => (unitPrice.value + addonsPrice.value) * quantity.value)
@@ -56,7 +66,7 @@ const resetForm = () => {
   const defaults = buildDefaultVariantSelections(props.product.variants ?? [])
   Object.assign(variantSelections, defaults)
 
-  selectedAddons.value = []
+  Object.keys(addonCounts).forEach((key) => delete addonCounts[key])
   quantity.value = 1
   notes.value = ''
 }
@@ -68,12 +78,21 @@ watch(
   },
 )
 
-const toggleAddon = (addonId) => {
-  const idx = selectedAddons.value.indexOf(addonId)
-  if (idx >= 0) {
-    selectedAddons.value.splice(idx, 1)
+const toggleAddon = (addonId, checked) => {
+  if (checked) {
+    addonCounts[addonId] = 1
   } else {
-    selectedAddons.value.push(addonId)
+    delete addonCounts[addonId]
+  }
+}
+
+const updateAddonQty = (addonId, delta) => {
+  if (!addonCounts[addonId]) return
+  const newQty = addonCounts[addonId] + delta
+  if (newQty <= 0) {
+    delete addonCounts[addonId]
+  } else {
+    addonCounts[addonId] = newQty
   }
 }
 
@@ -83,11 +102,11 @@ const handleAdd = () => {
   emit('add', {
     product: props.product,
     variantSelections: { ...variantSelections },
-    addonIds: [...selectedAddons.value],
+    addonIds: getAddonIdsArray(),
     quantity: quantity.value,
     notes: notes.value,
     variant_label: buildVariantLabel(props.product, variantSelections),
-    addons_label: buildAddonsLabel(props.product, selectedAddons.value),
+    addons_label: buildAddonsLabel(props.product, getAddonIdsArray()),
   })
   emit('close')
 }
@@ -169,22 +188,47 @@ const handleClose = () => emit('close')
               <div v-if="product.addons?.length" class="mb-6">
                 <p class="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Tambahan</p>
                 <div class="space-y-2">
-                  <label
+                  <div
                     v-for="addon in product.addons"
                     :key="addon.id"
-                    class="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 px-4 py-3 transition has-[:checked]:border-merchant-primary has-[:checked]:bg-merchant-accent"
+                    class="flex flex-col rounded-xl border transition"
+                    :class="addonCounts[addon.id] ? 'border-merchant-primary bg-merchant-accent' : 'border-slate-200'"
                   >
-                    <div class="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        class="h-5 w-5 rounded border-slate-300 text-merchant-primary focus:ring-merchant-primary"
-                        :checked="selectedAddons.includes(addon.id)"
-                        @change="toggleAddon(addon.id)"
-                      />
-                      <span class="font-semibold text-slate-800">{{ addon.name }}</span>
+                    <label class="flex cursor-pointer items-center justify-between px-4 py-3">
+                      <div class="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          class="h-5 w-5 rounded border-slate-300 text-merchant-primary focus:ring-merchant-primary"
+                          :checked="!!addonCounts[addon.id]"
+                          @change="e => toggleAddon(addon.id, e.target.checked)"
+                        />
+                        <span class="font-semibold text-slate-800">{{ addon.name }}</span>
+                      </div>
+                      <span class="text-sm font-bold text-merchant-primary">+{{ formatRupiah(addon.price) }}</span>
+                    </label>
+
+                    <!-- Addon Quantity Control -->
+                    <div v-if="addonCounts[addon.id]" class="flex items-center justify-between border-t border-merchant-primary/20 px-4 py-3 bg-white/40 rounded-b-xl">
+                      <span class="text-xs font-bold text-slate-500">Jumlah {{ addon.name }}</span>
+                      <div class="flex items-center gap-3">
+                        <button
+                          type="button"
+                          class="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-base font-bold shadow-sm ring-1 ring-slate-200"
+                          @click="updateAddonQty(addon.id, -1)"
+                        >
+                          −
+                        </button>
+                        <span class="min-w-[1.5rem] text-center text-sm font-black">{{ addonCounts[addon.id] }}</span>
+                        <button
+                          type="button"
+                          class="flex h-8 w-8 items-center justify-center rounded-lg bg-merchant-primary text-base font-bold text-white shadow-sm"
+                          @click="updateAddonQty(addon.id, 1)"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
-                    <span class="text-sm font-bold text-merchant-primary">+{{ formatRupiah(addon.price) }}</span>
-                  </label>
+                  </div>
                 </div>
               </div>
 

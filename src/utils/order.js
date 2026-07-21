@@ -53,10 +53,18 @@ export function buildVariantLabel(product, variantSelections = {}) {
 }
 
 export function buildAddonsLabel(product, addonIds = []) {
-  return addonIds
-    .map((id) => product.addons?.find((a) => a.id === id)?.name)
-    .filter(Boolean)
-    .join(', ')
+  if (!addonIds.length) return ''
+  
+  const counts = {}
+  addonIds.forEach(id => {
+    counts[id] = (counts[id] || 0) + 1
+  })
+
+  return Object.entries(counts).map(([id, qty]) => {
+    const addon = product.addons?.find(a => String(a.id) === String(id))
+    if (!addon) return null
+    return addon.name + (qty > 1 ? ` x${qty}` : '')
+  }).filter(Boolean).join(', ')
 }
 
 export function itemFingerprint(item) {

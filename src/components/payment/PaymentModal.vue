@@ -39,7 +39,6 @@ const paymentMethods = [
 ]
 
 const canProceedStep1 = computed(() => {
-  if (cartStore.orderType === 'dine_in' && !cartStore.tableId) return false
   return true
 })
 
@@ -228,49 +227,19 @@ const handleConfirm = async () => {
             <!-- Error hanya tampil saat ada pesan error aktual -->
             <AppAlert v-if="hasError" type="error" :message="errorMessage" class="mb-4" />
 
-            <!-- Step 1: Order type -->
+            <!-- Step 1: Input Nama -->
             <div v-if="step === 1" class="space-y-5">
-              <p class="text-sm text-slate-500">Pilih tipe order untuk melanjutkan.</p>
+              <p class="text-sm text-slate-500">Masukkan nama pelanggan (opsional).</p>
 
-              <div class="flex gap-2">
-                <button
-                  type="button"
-                  class="flex-1 rounded-xl py-3 text-sm font-bold transition"
-                  :class="
-                    cartStore.orderType === 'dine_in'
-                      ? 'bg-merchant-primary text-white shadow-lg'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  "
-                  @click="setOrderType('dine_in')"
-                >
-                  Dine In
-                </button>
-                <button
-                  type="button"
-                  class="flex-1 rounded-xl py-3 text-sm font-bold transition"
-                  :class="
-                    cartStore.orderType === 'take_away'
-                      ? 'bg-merchant-primary text-white shadow-lg'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  "
-                  @click="setOrderType('take_away')"
-                >
-                  Take Away
-                </button>
-              </div>
-
-              <div v-if="cartStore.orderType === 'dine_in'">
-                <label class="mb-2 block text-xs font-bold uppercase text-slate-400">Pilih Meja</label>
-                <select
-                  :value="cartStore.tableId ?? ''"
-                  class="w-full rounded-xl border border-slate-200 px-4 py-3 font-semibold"
-                  @change="cartStore.setTable($event.target.value ? Number($event.target.value) : null)"
-                >
-                  <option value="">Pilih meja...</option>
-                  <option v-for="table in tables" :key="table.id" :value="table.id">
-                    {{ table.table_number }}{{ table.name ? ` — ${table.name}` : '' }}
-                  </option>
-                </select>
+              <div>
+                <label class="mb-2 block text-xs font-bold uppercase text-slate-400">Nama Pelanggan</label>
+                <input
+                  v-model="cartStore.customerName"
+                  type="text"
+                  placeholder="Misal: Budi (Kosong = Kopirex)"
+                  class="w-full rounded-xl border border-slate-200 px-4 py-3 font-semibold focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
+                  @keyup.enter="nextStep"
+                />
               </div>
             </div>
 
