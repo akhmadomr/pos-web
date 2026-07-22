@@ -31,6 +31,7 @@ const shortcuts = computed(() => {
   const total = props.total
   return [
     { label: 'Pas', value: Math.ceil(total / 1000) * 1000 || total },
+    { label: '10rb', value: 10000 },
     { label: '20rb', value: 20000 },
     { label: '30rb', value: 30000 },
     { label: '40rb', value: 40000 },
