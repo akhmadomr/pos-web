@@ -386,6 +386,12 @@ const submitCloseShift = async () => {
                     />
                     <span class="text-xs font-semibold text-slate-500">{{ opname.unit }}</span>
                   </div>
+                  <div class="mt-1 flex justify-between text-[10px] font-bold">
+                    <span class="text-slate-400">Selisih:</span>
+                    <span :class="Number(opname.actual_stock) - Number(opname.expected_stock) === 0 ? 'text-emerald-500' : (Number(opname.actual_stock) - Number(opname.expected_stock) > 0 ? 'text-sky-500' : 'text-rose-500')">
+                      {{ Number(opname.actual_stock) - Number(opname.expected_stock) > 0 ? '+' : '' }}{{ Math.round((Number(opname.actual_stock) - Number(opname.expected_stock)) * 100) / 100 }} {{ opname.unit }}
+                    </span>
+                  </div>
                 </div>
                 <div>
                   <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Alasan Selisih</label>
