@@ -53,6 +53,20 @@ client.interceptors.response.use(
     }
 
     if (error.response?.status === 422) {
+      const errors = error.response.data?.errors || {}
+      if (errors.shift_id) {
+        const shiftErrors = errors.shift_id.join(' ').toLowerCase()
+        if (shiftErrors.includes('sudah ditutup') || shiftErrors.includes('tidak ditemukan') || shiftErrors.includes('bukan milik kasir')) {
+          localStorage.removeItem('shift')
+          import('@/stores/auth.store').then(({ useAuthStore }) => {
+            const authStore = useAuthStore()
+            authStore.shift = null
+            if (window.location.pathname !== '/pos/shift/open') {
+              window.location.href = '/pos/shift/open'
+            }
+          })
+        }
+      }
       return Promise.reject(error.response)
     }
 

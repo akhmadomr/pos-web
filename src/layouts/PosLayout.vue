@@ -19,6 +19,7 @@ const printer = usePrinter()
 
 const now = ref(dayjs())
 const showCloseModal = ref(false)
+const ignoredShiftBannerId = ref(null)
 const shiftSummaryRef = ref(null)
 let clockTimer = null
 let printerReconnectTimer = null
@@ -45,21 +46,30 @@ const toggleFullscreen = () => {
 const clockLabel = computed(() => now.value.format('HH:mm:ss'))
 const dateLabel = computed(() => now.value.format('dddd, DD MMM YYYY'))
 
-const isShiftOverdue = computed(() => {
-  const schedule = authStore.shift?.schedule
+const isShiftEndingSoon = computed(() => {
+  const shift = authStore.shift
+  const schedule = shift?.schedule
   if (!schedule || !schedule.end_time) return false
+  if (ignoredShiftBannerId.value === shift.id) return false
 
   const currentTime = now.value.format('HH:mm:ss')
   const startTime = schedule.start_time
   const endTime = schedule.end_time
 
+  const endParts = endTime.split(':')
+  let warnHour = parseInt(endParts[0], 10) - 1
+  if (warnHour < 0) warnHour = 23
+  const warnTime = `${warnHour.toString().padStart(2, '0')}:${endParts[1]}:${endParts[2]}`
+
   if (startTime > endTime) {
      // Overnight shift (e.g. 22:00 to 06:00)
-     return currentTime > endTime && currentTime < startTime
+     if (currentTime >= warnTime || currentTime < endTime) return true
+     if (currentTime > endTime && currentTime < startTime) return true
+  } else {
+     // Normal shift
+     if (currentTime >= warnTime) return true
   }
-  
-  // Normal shift
-  return currentTime > endTime
+  return false
 })
 
 const navItems = [
@@ -295,15 +305,20 @@ onUnmounted(() => {
         </nav>
       </header>
 
-      <!-- Sticky Shift Overdue Banner -->
-      <div v-if="authStore.hasActiveShift && isShiftOverdue" class="sticky top-[60px] lg:top-[105px] z-30 flex flex-col sm:flex-row items-center justify-between gap-2 bg-rose-500 px-4 py-2 text-white shadow-md">
-        <div class="flex items-center gap-2 text-sm font-bold">
+      <!-- Sticky Shift Warning Banner -->
+      <div v-if="authStore.hasActiveShift && isShiftEndingSoon" class="sticky top-[60px] lg:top-[105px] z-30 flex flex-col sm:flex-row items-center justify-between gap-2 bg-rose-500 px-4 py-2 text-white shadow-md">
+        <div class="flex items-center gap-2 text-sm font-bold flex-1">
           <i class="pi pi-exclamation-triangle text-lg" />
-          <span>Waktu {{ authStore.shift.schedule.name }} telah berakhir ({{ authStore.shift.schedule.end_time.substring(0, 5) }}). Harap segera Tutup Shift.</span>
+          <span>Waktu {{ authStore.shift.schedule.name }} akan/telah berakhir ({{ authStore.shift.schedule.end_time.substring(0, 5) }}). Harap segera Tutup Shift.</span>
         </div>
-        <button @click="showCloseModal = true" class="shrink-0 rounded-lg bg-white px-3 py-1.5 text-xs font-black text-rose-600 shadow-sm transition hover:bg-rose-50">
-          Tutup Shift Sekarang
-        </button>
+        <div class="flex items-center gap-2 shrink-0">
+          <button @click="showCloseModal = true" class="rounded-lg bg-white px-3 py-1.5 text-xs font-black text-rose-600 shadow-sm transition hover:bg-rose-50">
+            Tutup Shift
+          </button>
+          <button @click="ignoredShiftBannerId = authStore.shift.id" class="flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-rose-600 text-white transition hover:bg-rose-700" title="Abaikan untuk shift ini">
+            <i class="pi pi-times" />
+          </button>
+        </div>
       </div>
 
       <main class="flex-1 p-2 sm:p-4 lg:p-6">

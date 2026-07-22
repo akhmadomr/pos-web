@@ -35,7 +35,7 @@ export function generateReceiptHTML(data, settings = {}) {
     switch(block.type) {
       case 'image':
         if (block.content) {
-          htmlBody += `<div class="center" style="margin-bottom:8px;"><img src="${escapeHtml(block.content)}" style="max-height:36px;width:auto;filter:grayscale(100%);" alt="Logo" /></div>`
+          htmlBody += `<div class="center" style="margin-bottom:8px;"><img src="${escapeHtml(block.content)}" style="max-height:24px;width:auto;filter:grayscale(100%);" alt="Logo" /></div>`
         }
         break
       case 'text':
@@ -161,9 +161,9 @@ export async function buildEscPosPayload(data, settings = {}) {
       case 'image':
         if (block.content) {
           try {
-            // Kurangi ukuran lebar logo menjadi 140px agar ukuran lebih proporsional dan tidak terlalu besar
+            // Kurangi ukuran lebar logo menjadi 100px agar ukuran lebih proporsional dan tidak terlalu besar
             // sehingga proses print Bluetooth menjadi lebih cepat
-            const imgData = await processImageToMonochrome(block.content, 140)
+            const imgData = await processImageToMonochrome(block.content, 100)
             if (imgData) {
               lines.push({ type: 'align', value: 'center' })
               lines.push({ type: 'image', pixels: imgData.pixels, width: imgData.width, height: imgData.height })
