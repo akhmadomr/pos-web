@@ -37,9 +37,9 @@ const routes = [
         component: () => import('@/pages/pos/Index.vue'),
       },
       {
-        path: 'pos/orders',
-        name: 'pos-orders',
-        component: () => import('@/pages/pos/OrderList.vue'),
+        path: 'pos/expenses',
+        name: 'pos-expenses',
+        component: () => import('@/pages/pos/Expenses.vue'),
       },
       {
         path: 'pos/history',

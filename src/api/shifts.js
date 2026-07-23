@@ -23,9 +23,19 @@ export async function closeShift(payload) {
   return data
 }
 
-export async function fetchShiftHistory(params) {
+export const fetchShiftHistory = async (params) => {
   const { data } = await client.get('/pos/shifts/history', { params })
   return data
+}
+
+export const fetchExpenses = async () => {
+  const { data } = await client.get('/pos/shifts/expenses')
+  return data.data
+}
+
+export const addExpense = async (payload) => {
+  const { data } = await client.post('/pos/shifts/expenses', payload)
+  return data.data
 }
 
 export async function fetchShiftAnalytics(shiftId) {

@@ -73,8 +73,8 @@ const isShiftEndingSoon = computed(() => {
 })
 
 const navItems = [
-  { label: 'Kasir', path: '/pos', icon: 'pi-shopping-cart' },
-  { label: 'Order', path: '/pos/orders', icon: 'pi-receipt' },
+  { label: 'Kasir', path: '/pos', icon: 'pi-shopping-bag' },
+  { label: 'Pengeluaran', path: '/pos/expenses', icon: 'pi-money-bill' },
   { label: 'Riwayat', path: '/pos/history', icon: 'pi-history' },
   { label: 'Histori Shift', path: '/pos/shifts/history', icon: 'pi-calendar-clock' },
 ]

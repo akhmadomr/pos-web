@@ -60,13 +60,8 @@ const needsConfiguration = (product) =>
   (product.variants?.length ?? 0) > 0 || (product.addons?.length ?? 0) > 0
 
 const handleProductSelect = (product) => {
-  if (needsConfiguration(product)) {
-    selectedProduct.value = product
-    showVariantModal.value = true
-    return
-  }
-
-  cartStore.addItem(product, { quantity: 1 })
+  selectedProduct.value = product
+  showVariantModal.value = true
 }
 
 const handleVariantAdd = ({ product, variantSelections, addonIds, quantity, notes }) => {
