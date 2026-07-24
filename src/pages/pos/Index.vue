@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import AppAlert from '@/components/common/AppAlert.vue'
 import PaymentModal from '@/components/payment/PaymentModal.vue'
 import PaymentSuccess from '@/components/payment/PaymentSuccess.vue'
@@ -20,6 +21,7 @@ const productStore = useProductStore()
 const cartStore = useCartStore()
 const payment = usePayment()
 const printer = usePrinter()
+const router = useRouter()
 
 const selectedCategory = ref(null)
 const searchQuery = ref('')
@@ -28,6 +30,7 @@ const showVariantModal = ref(false)
 const selectedProduct = ref(null)
 const showPaymentModal = ref(false)
 const showPaymentSuccess = ref(false)
+const showEditSuccess = ref(false)
 
 const successPayload = ref({
   orderNumber: '',
@@ -76,6 +79,17 @@ const handleCheckout = () => {
 const handlePaid = async (payload) => {
   showPaymentModal.value = false
 
+  if (payload.is_edit_request) {
+    showEditSuccess.value = true
+    setTimeout(() => {
+      showEditSuccess.value = false
+      cartStore.clearCart()
+      payment.resetPayment()
+      router.push('/pos/history')
+    }, 2500)
+    return
+  }
+
   if (payload.receipt_data) {
     await printer.printReceipt(payload.receipt_data)
   }
@@ -111,6 +125,17 @@ onMounted(() => {
       class="mb-4 shrink-0"
       dismissible
     />
+
+    <div v-if="cartStore.isEditingOrder" class="mb-4 shrink-0 rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <i class="pi pi-file-edit text-2xl text-amber-500" />
+        <div>
+          <h3 class="font-black text-amber-900">Mode Edit Transaksi ({{ cartStore.editingOriginalOrder?.order_number }})</h3>
+          <p class="text-xs font-semibold text-amber-700">Alasan: {{ cartStore.editingOrderReason }}</p>
+        </div>
+      </div>
+      <button @click="cartStore.clearCart()" class="text-xs font-bold text-amber-700 hover:text-amber-900 underline">Batalkan Edit</button>
+    </div>
 
     <div class="grid min-h-0 flex-1 gap-4 pb-20 lg:grid-cols-5 lg:gap-6 lg:pb-0">
       <section class="flex min-h-0 min-w-0 flex-col gap-4 lg:col-span-3">
@@ -188,5 +213,45 @@ onMounted(() => {
       :payment-method="successPayload.paymentMethod"
       @done="handlePaymentDone"
     />
+
+    <!-- Edit Success Modal -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition duration-300"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition duration-200"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="showEditSuccess"
+          class="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+        >
+          <div class="w-full max-w-sm rounded-3xl bg-white p-8 text-center shadow-2xl">
+            <div
+              class="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-amber-100"
+              style="animation: pop 0.4s ease-out;"
+            >
+              <i class="pi pi-file-edit text-5xl text-amber-600" />
+            </div>
+
+            <h2 class="text-2xl font-black text-slate-900">Pengajuan Terkirim</h2>
+            <p class="mt-2 text-sm text-slate-500 font-medium">
+              Pengajuan pengeditan transaksi berhasil dikirim. Silakan hubungi admin untuk mendapatkan persetujuan.
+            </p>
+
+            <p class="mt-6 text-xs text-slate-400 font-bold">Mengalihkan ke riwayat...</p>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
+
+<style scoped>
+@keyframes pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+</style>
