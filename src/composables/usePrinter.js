@@ -188,9 +188,9 @@ export function usePrinter() {
           if (attempts >= maxRetries) throw err
           console.warn(`Bluetooth reconnect attempt ${attempts} failed, retrying...`, err)
           
-          if (device.gatt.connected) {
-             device.gatt.disconnect()
-          }
+          try { 
+            if (device.gatt) device.gatt.disconnect();
+          } catch(e) { }
 
           // Jika error adalah NotFoundError (biasanya karena belum siap), beri jeda lebih lama
           if (err.name === 'NotFoundError') {
