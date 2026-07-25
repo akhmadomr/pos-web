@@ -4,8 +4,24 @@ import AppAlert from '@/components/common/AppAlert.vue'
 import { useOrderStore } from '@/stores/order.store'
 import { formatRupiah } from '@/utils/currency'
 import dayjs from 'dayjs'
+import client from '@/api/client'
 
 const orderStore = useOrderStore()
+
+const appAlertMessage = ref('')
+const appAlertTitle = ref('')
+const appAlertType = ref('success') // 'success' or 'error'
+const showAppAlert = ref(false)
+
+const triggerAlert = (title, message, type = 'success') => {
+  appAlertTitle.value = title
+  appAlertMessage.value = message
+  appAlertType.value = type
+  showAppAlert.value = true
+  setTimeout(() => {
+    showAppAlert.value = false
+  }, 3000)
+}
 
 const loadOrders = () => {
   orderStore.fetchOrders()
@@ -83,11 +99,11 @@ const isSubmittingEdit = ref(false)
 
 const openEditModal = (order) => {
   if (order.status === 'cancelled') {
-    alert('Pesanan ini sudah dibatalkan.')
+    triggerAlert('Gagal', 'Pesanan ini sudah dibatalkan.', 'error')
     return
   }
   if (order.edit_status === 'pending') {
-    alert('Pesanan ini sudah dalam pengajuan edit dan menunggu persetujuan admin.')
+    triggerAlert('Gagal', 'Pesanan ini sudah dalam pengajuan edit.', 'error')
     return
   }
   
@@ -100,6 +116,31 @@ const closeEditModal = () => {
   showEditModal.value = false
   editingOrder.value = null
   editReason.value = ''
+}
+
+const showCancelModal = ref(false)
+const cancelingOrder = ref(null)
+const cancelReason = ref('')
+const isSubmittingCancel = ref(false)
+
+const openCancelModal = (order) => {
+  if (order.status === 'cancelled') {
+    triggerAlert('Gagal', 'Pesanan ini sudah dibatalkan.', 'error')
+    return
+  }
+  if (order.edit_status === 'pending' || order.edit_status === 'pending_cancel') {
+    triggerAlert('Gagal', 'Pesanan ini sudah dalam pengajuan.', 'error')
+    return
+  }
+  cancelingOrder.value = order
+  cancelReason.value = ''
+  showCancelModal.value = true
+}
+
+const closeCancelModal = () => {
+  showCancelModal.value = false
+  cancelingOrder.value = null
+  cancelReason.value = ''
 }
 
 const showDetailModal = ref(false)
@@ -115,25 +156,41 @@ const closeDetailModal = () => {
   detailOrder.value = null
 }
 
-import client from '@/api/client'
+import { useCartStore } from '@/stores/cart.store'
+
+const cartStore = useCartStore()
 
 const submitEditRequest = async () => {
   if (!editReason.value.trim()) {
-    alert('Alasan edit harus diisi.')
+    triggerAlert('Peringatan', 'Alasan edit harus diisi.', 'error')
     return
   }
-  isSubmittingEdit.value = true
+  
+  // Load order data to cart and transition to POS for editing
+  cartStore.loadOrderToCart(editingOrder.value, editReason.value)
+  closeEditModal()
+  router.push('/pos')
+}
+
+const submitCancelRequest = async () => {
+  if (!cancelReason.value.trim()) {
+    triggerAlert('Peringatan', 'Alasan pembatalan harus diisi.', 'error')
+    return
+  }
+  
+  isSubmittingCancel.value = true
   try {
-    await client.post(`/pos/orders/${editingOrder.value.id}/request-edit`, {
-      reason: editReason.value
+    await client.post(`/pos/orders/${cancelingOrder.value.id}/request-cancel`, {
+      reason: cancelReason.value
     })
-    alert('Pengajuan edit berhasil dikirim. Silahkan menghubungi admin.')
-    closeEditModal()
+    
+    triggerAlert('Pengajuan Terkirim', 'Pengajuan pembatalan berhasil dikirim. Silahkan hubungi admin.', 'success')
+    closeCancelModal()
     loadOrders()
   } catch (err) {
-    alert(err.response?.data?.message || 'Gagal mengirim pengajuan edit.')
+    triggerAlert('Gagal', err.response?.data?.message || 'Gagal mengajukan pembatalan.', 'error')
   } finally {
-    isSubmittingEdit.value = false
+    isSubmittingCancel.value = false
   }
 }
 </script>
@@ -195,6 +252,9 @@ const submitEditRequest = async () => {
               <span v-if="order.edit_status === 'pending'" class="rounded-lg bg-orange-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-orange-700">
                 Menunggu Persetujuan Edit
               </span>
+              <span v-else-if="order.edit_status === 'pending_cancel'" class="rounded-lg bg-rose-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-rose-700">
+                Menunggu Persetujuan Batal
+              </span>
             </div>
             <p class="text-xs text-slate-500 mt-1">{{ dayjs(order.created_at).format('DD MMM YYYY, HH:mm') }}</p>
             <p class="text-sm font-semibold mt-1">Pelanggan: {{ order.customer_name || 'Kopirex' }}</p>
@@ -213,6 +273,7 @@ const submitEditRequest = async () => {
               <span class="ml-2 text-slate-700">{{ item.product_name }}</span>
               <p v-if="item.variant_label" class="ml-6 text-xs text-slate-500">{{ item.variant_label }}</p>
               <p v-if="item.addons_label" class="ml-6 text-xs text-slate-500">+ {{ item.addons_label }}</p>
+              <p v-if="item.notes" class="ml-6 text-xs italic text-slate-500 font-medium">"{{ item.notes }}"</p>
             </li>
           </ul>
         </div>
@@ -227,10 +288,18 @@ const submitEditRequest = async () => {
           <button 
             type="button" 
             @click="openEditModal(order)"
-            :disabled="order.edit_status === 'pending' || order.status === 'cancelled'"
+            :disabled="['pending', 'pending_cancel'].includes(order.edit_status) || order.status === 'cancelled'"
             class="flex-1 rounded-xl border border-slate-200 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <i class="pi pi-pencil mr-1" /> Edit
+          </button>
+          <button 
+            type="button" 
+            @click="openCancelModal(order)"
+            :disabled="['pending', 'pending_cancel'].includes(order.edit_status) || order.status === 'cancelled'"
+            class="flex-1 rounded-xl border border-rose-200 py-2 text-sm font-bold text-rose-600 hover:bg-rose-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <i class="pi pi-trash mr-1" /> Batal
           </button>
           <button 
             type="button" 
@@ -251,7 +320,7 @@ const submitEditRequest = async () => {
       <div class="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
         <h3 class="mb-2 text-xl font-black text-slate-900">Pengajuan Edit Pesanan</h3>
         <p class="mb-4 text-sm text-slate-500">
-          Pesanan <strong>{{ editingOrder?.order_number }}</strong>. Masukkan alasan Anda mengajukan edit/pembatalan. Setelah disetujui Admin, pesanan akan dibatalkan agar Anda dapat menginput ulang.
+          Pesanan <strong>{{ editingOrder?.order_number }}</strong>. Masukkan alasan pengeditan. Setelah ini Anda akan diarahkan ke layar kasir untuk mengubah pesanan dan meninjau total baru.
         </p>
         <textarea
           v-model="editReason"
@@ -270,6 +339,41 @@ const submitEditRequest = async () => {
       </div>
     </div>
 
+    <!-- Modal Pengajuan Batal -->
+    <div v-if="showCancelModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" @click="closeCancelModal" />
+      <div class="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <h3 class="mb-2 text-xl font-black text-rose-600">Pengajuan Batal Pesanan</h3>
+        <p class="mb-4 text-sm text-slate-500">
+          Pesanan <strong>{{ cancelingOrder?.order_number }}</strong>. Masukkan alasan pembatalan. Permintaan ini harus disetujui oleh admin sebelum transaksi dihapus dan stok dikembalikan.
+        </p>
+        <textarea
+          v-model="cancelReason"
+          rows="3"
+          class="w-full rounded-xl border-slate-200 p-3 text-sm focus:border-rose-500 focus:ring-rose-500"
+          placeholder="Contoh: Pelanggan tidak jadi beli, pesanan ganda, dll"
+        />
+        <div class="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            class="rounded-xl bg-slate-100 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200"
+            @click="closeCancelModal"
+          >
+            Tutup
+          </button>
+          <button
+            type="button"
+            class="flex items-center justify-center rounded-xl bg-rose-600 px-4 py-2 text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-50"
+            @click="submitCancelRequest"
+            :disabled="!cancelReason.trim() || isSubmittingCancel"
+          >
+            <i v-if="isSubmittingCancel" class="pi pi-spin pi-spinner mr-2" />
+            Ajukan Pembatalan
+          </button>
+        </div>
+      </div>
+    </div>
+    
     <!-- Modal Detail Pesanan -->
     <div v-if="showDetailModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" @click="closeDetailModal" />
@@ -364,5 +468,34 @@ const submitEditRequest = async () => {
         </div>
       </div>
     </div>
+
+    <!-- Custom Alert Popup -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition duration-300"
+        enter-from-class="opacity-0 translate-y-4"
+        enter-to-class="opacity-100 translate-y-0"
+        leave-active-class="transition duration-200"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="showAppAlert"
+          class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[300] flex items-center gap-3 rounded-2xl px-5 py-4 shadow-2xl backdrop-blur-md"
+          :class="appAlertType === 'success' ? 'bg-emerald-600/95 text-white' : 'bg-rose-600/95 text-white'"
+        >
+          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20">
+            <i class="pi text-xl" :class="appAlertType === 'success' ? 'pi-check' : 'pi-times'" />
+          </div>
+          <div>
+            <h4 class="font-black">{{ appAlertTitle }}</h4>
+            <p class="text-sm font-medium text-white/90">{{ appAlertMessage }}</p>
+          </div>
+          <button @click="showAppAlert = false" class="ml-4 p-2 text-white/70 hover:text-white transition">
+            <i class="pi pi-times" />
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>

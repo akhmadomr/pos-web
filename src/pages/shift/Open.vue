@@ -1,17 +1,23 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import AppButton from '@/components/common/AppButton.vue'
 import OpenShiftModal from '@/components/shift/OpenShiftModal.vue'
 import { useAuthStore } from '@/stores/auth.store'
+import { useSettingsStore } from '@/stores/settings.store'
 import logoUrl from '@/assets/kopirexnew.png'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const settingsStore = useSettingsStore()
 
 const todayLabel = computed(() => dayjs().format('dddd, DD MMMM YYYY'))
 const outletLabel = computed(() => authStore.user?.outlet?.name ?? `Outlet #${authStore.user?.outlet_id}`)
+
+onMounted(() => {
+  settingsStore.load()
+})
 
 const handleOpened = () => {
   router.push({ name: 'pos' })

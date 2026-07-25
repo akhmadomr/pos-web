@@ -4,7 +4,6 @@ import AppAlert from '@/components/common/AppAlert.vue'
 import AppButton from '@/components/common/AppButton.vue'
 import CashPayment from '@/components/payment/CashPayment.vue'
 import QrisPayment from '@/components/payment/QrisPayment.vue'
-import TransferPayment from '@/components/payment/TransferPayment.vue'
 import OrderSummary from '@/components/order/OrderSummary.vue'
 import { createOrder } from '@/api/orders'
 import { fetchTables } from '@/api/tables'
@@ -13,6 +12,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import { useCartStore } from '@/stores/cart.store'
 import { useOrderStore } from '@/stores/order.store'
 import { formatRupiah } from '@/utils/currency'
+import client from '@/api/client'
 
 const props = defineProps({
   show: {
@@ -35,12 +35,22 @@ const loadingTables = ref(false)
 const paymentMethods = [
   { id: 'cash', label: 'Tunai', icon: 'pi-money-bill', color: 'bg-emerald-500' },
   { id: 'qris', label: 'QRIS', icon: 'pi-qrcode', color: 'bg-sky-500' },
-  { id: 'transfer', label: 'Transfer', icon: 'pi-building-columns', color: 'bg-violet-500' },
 ]
 
+const nameError = ref(false)
+
 const canProceedStep1 = computed(() => {
-  return true
+  return cartStore.customerName?.trim().length > 0
 })
+
+const tryNextStep = () => {
+  if (!canProceedStep1.value) {
+    nameError.value = true
+    return
+  }
+  nameError.value = false
+  nextStep()
+}
 
 const cashReceivedNum = computed(() =>
   Number(String(payment.cashReceived.value).replace(/\D/g, '') || 0),
@@ -143,6 +153,29 @@ const handleConfirm = async () => {
       reference_number: payment.referenceNumber.value || null,
     }
 
+    if (cartStore.isEditingOrder) {
+      if (!navigator.onLine) {
+        throw new Error('Tidak dapat mengajukan edit transaksi dalam mode offline.')
+      }
+      const editPayload = {
+        ...payload,
+        payment_method: currentMethod.value,
+        tendered_amount: amount,
+        cashier_name: authStore.user?.name || 'Kasir',
+        edited_at: new Date().toISOString(),
+      }
+      
+      await client.post(`/pos/orders/${cartStore.editingOrderId}/request-edit`, {
+        reason: cartStore.editingOrderReason,
+        edit_payload: editPayload
+      })
+      
+      emit('paid', {
+        is_edit_request: true,
+      })
+      return
+    }
+
     if (!navigator.onLine) {
       // PROSES OFFLINE
       const offlineResult = await orderStore.saveOfflineOrder(payload, methodData, cartStore.total, cartStore.items)
@@ -229,17 +262,26 @@ const handleConfirm = async () => {
 
             <!-- Step 1: Input Nama -->
             <div v-if="step === 1" class="space-y-5">
-              <p class="text-sm text-slate-500">Masukkan nama pelanggan (opsional).</p>
+              <p class="text-sm text-slate-500">Masukkan nama pelanggan untuk pesanan ini.</p>
 
               <div>
-                <label class="mb-2 block text-xs font-bold uppercase text-slate-400">Nama Pelanggan</label>
+                <label class="mb-2 block text-xs font-bold uppercase text-slate-400">Nama Pelanggan <span class="text-rose-500">*</span></label>
                 <input
                   v-model="cartStore.customerName"
                   type="text"
-                  placeholder="Misal: Budi (Kosong = Kopirex)"
-                  class="w-full rounded-xl border border-slate-200 px-4 py-3 font-semibold focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
-                  @keyup.enter="nextStep"
+                  placeholder="Contoh: Budi, Ani, Meja 3..."
+                  :class="[
+                    'w-full rounded-xl border px-4 py-3 font-semibold focus:outline-none focus:ring-2',
+                    nameError && !canProceedStep1
+                      ? 'border-rose-400 focus:border-rose-400 focus:ring-rose-400/20'
+                      : 'border-slate-200 focus:border-merchant-primary focus:ring-merchant-primary/20'
+                  ]"
+                  @keyup.enter="tryNextStep"
+                  @input="nameError = false"
                 />
+                <p v-if="nameError && !canProceedStep1" class="mt-1.5 text-xs font-semibold text-rose-500">
+                  <i class="pi pi-exclamation-circle mr-1" />Nama pelanggan wajib diisi sebelum melanjutkan.
+                </p>
               </div>
             </div>
 
@@ -298,14 +340,6 @@ const handleConfirm = async () => {
                 :loading="isProcessing"
                 @confirm="handleConfirm"
               />
-
-              <TransferPayment
-                v-else-if="currentMethod === 'transfer'"
-                v-model="payment.referenceNumber.value"
-                :total="cartStore.total"
-                :loading="isProcessing"
-                @confirm="handleConfirm"
-              />
             </div>
           </div>
 
@@ -327,8 +361,7 @@ const handleConfirm = async () => {
               <AppButton
                 v-if="step === 1"
                 class="flex-1"
-                :disabled="!canProceedStep1"
-                @click="nextStep"
+                @click="tryNextStep"
               >
                 Lanjut
                 <i class="pi pi-arrow-right" />
@@ -343,7 +376,7 @@ const handleConfirm = async () => {
                 @click="handleConfirm"
               >
                 <i class="pi pi-check" />
-                Konfirmasi Bayar — {{ formatRupiah(cartStore.total) }}
+                {{ cartStore.isEditingOrder ? 'Ajukan Perubahan —' : 'Konfirmasi Bayar —' }} {{ formatRupiah(cartStore.total) }}
               </AppButton>
             </div>
           </footer>

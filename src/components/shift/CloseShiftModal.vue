@@ -98,7 +98,7 @@ const loadSummary = async () => {
       name: ing.name,
       unit: ing.unit,
       expected_stock: ing.expected_stock,
-      actual_stock: ing.expected_stock,
+      actual_stock: '',
       is_matching: true,
       notes: '',
     }))
@@ -365,7 +365,6 @@ const submitCloseShift = async () => {
               <div class="flex items-start justify-between">
                 <div>
                   <p class="font-bold text-slate-900">{{ opname.name }}</p>
-                  <p class="text-xs text-slate-500">Sistem: {{ Number(opname.expected_stock).toLocaleString('id-ID') }} {{ opname.unit }}</p>
                 </div>
                 <label class="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer">
                   <input type="checkbox" v-model="opname.is_matching" class="h-5 w-5 rounded border-slate-300 text-merchant-primary focus:ring-merchant-primary" />
@@ -385,12 +384,6 @@ const submitCloseShift = async () => {
                       class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
                     />
                     <span class="text-xs font-semibold text-slate-500">{{ opname.unit }}</span>
-                  </div>
-                  <div class="mt-1 flex justify-between text-[10px] font-bold">
-                    <span class="text-slate-400">Selisih:</span>
-                    <span :class="Number(opname.actual_stock) - Number(opname.expected_stock) === 0 ? 'text-emerald-500' : (Number(opname.actual_stock) - Number(opname.expected_stock) > 0 ? 'text-sky-500' : 'text-rose-500')">
-                      {{ Number(opname.actual_stock) - Number(opname.expected_stock) > 0 ? '+' : '' }}{{ Math.round((Number(opname.actual_stock) - Number(opname.expected_stock)) * 100) / 100 }} {{ opname.unit }}
-                    </span>
                   </div>
                 </div>
                 <div>

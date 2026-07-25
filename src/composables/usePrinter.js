@@ -222,18 +222,29 @@ export function usePrinter() {
     bluetoothDevice.value = device
     bluetoothCharacteristic.value = characteristic
     printerOnline.value = true // Anggap online karena terhubung bluetooth
+    localStorage.setItem('last_bluetooth_device', device.name)
     
-    device.addEventListener('gattserverdisconnected', () => {
-      // Jangan nullify device-nya agar sistem tahu user sedang mencoba pakai bluetooth
-      bluetoothCharacteristic.value = null
-      printerOnline.value = false
-    })
+    device.removeEventListener('gattserverdisconnected', onDisconnected)
+    device.addEventListener('gattserverdisconnected', onDisconnected)
     
     return true
   }
 
+  function onDisconnected() {
+    console.warn('Bluetooth device disconnected')
+    bluetoothCharacteristic.value = null
+    printerOnline.value = false
+    // Auto-reconnect dengan retry
+    setTimeout(async () => {
+      console.log('Attempting to reconnect...')
+      await autoConnectBluetooth()
+    }, 5000)
+  }
+
   /**
-   * Hubungkan ke Printer Bluetooth (Web Bluetooth API) manual via klik user
+   * Hubungkan ke Printer Bluetooth (Web Bluetooth API) manual via klik user.
+   * Pertama coba device yang sudah pernah di-pair tanpa dialog pilih.
+   * Jika gagal atau tidak ada, baru tampilkan dialog pilih device.
    */
   async function connectBluetooth() {
     if (isConnectingBluetooth.value) {
@@ -247,6 +258,37 @@ export function usePrinter() {
     }
     
     isConnectingBluetooth.value = true
+    
+    // Langkah 1: Coba device yang sudah pernah terhubung (tanpa dialog)
+    if (typeof navigator.bluetooth.getDevices === 'function') {
+      try {
+        const pairedDevices = await navigator.bluetooth.getDevices()
+        const lastDeviceName = localStorage.getItem('last_bluetooth_device')
+        
+        if (pairedDevices && pairedDevices.length > 0) {
+          const sortedDevices = lastDeviceName
+            ? [...pairedDevices].sort((a, b) => (a.name === lastDeviceName ? -1 : 1))
+            : pairedDevices
+          
+          for (const device of sortedDevices) {
+            try {
+              const success = await setupBluetoothDevice(device)
+              if (success) {
+                console.log('Re-connected to previously paired Bluetooth printer:', device.name)
+                isConnectingBluetooth.value = false
+                return true
+              }
+            } catch (e) {
+              console.warn('Failed to reconnect to paired device:', device.name, e)
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('getDevices() failed:', e)
+      }
+    }
+    
+    // Langkah 2: Tampilkan dialog pilih device baru
     try {
       const device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
@@ -267,7 +309,7 @@ export function usePrinter() {
     } catch (err) {
       console.error('Bluetooth Connect Error:', err)
       // Hanya munculkan alert jika errornya bukan karena user membatalkan (cancel)
-      if (!err.message.includes('User cancelled')) {
+      if (!err.message.includes('User cancelled') && !err.message.includes('user gesture')) {
         alert('Gagal menghubungkan Bluetooth: ' + err.message)
       }
       return false
@@ -291,8 +333,15 @@ export function usePrinter() {
     isConnectingBluetooth.value = true
     try {
       const devices = await navigator.bluetooth.getDevices()
-      if (devices && devices.length > 0) {
-        for (const device of devices) {
+      const lastDeviceName = localStorage.getItem('last_bluetooth_device')
+      
+      // Prioritaskan device yang namanya cocok dengan yang pernah dipakai
+      const sortedDevices = lastDeviceName 
+        ? [...devices].sort((a, b) => (a.name === lastDeviceName ? -1 : 1))
+        : devices
+
+      if (sortedDevices && sortedDevices.length > 0) {
+        for (const device of sortedDevices) {
           try {
             await setupBluetoothDevice(device)
             console.log('Auto connected to Bluetooth printer:', device.name)

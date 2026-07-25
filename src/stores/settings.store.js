@@ -9,6 +9,9 @@ export const useSettingsStore = defineStore('settings', () => {
   const receipt = ref({
     layout: null,
   })
+  const shift = ref({
+    continue_cash: '0'
+  })
 
   const load = async () => {
     // 1. Load dari localStorage terlebih dahulu (offline support)
@@ -42,14 +45,17 @@ export const useSettingsStore = defineStore('settings', () => {
       if (s.group === 'receipt') {
         receipt.value[s.key] = s.value
       }
+      if (s.group === 'shift') {
+        shift.value[s.key] = s.value
+      }
     })
   }
-
 
   return {
     raw,
     tax,
     receipt,
+    shift,
     load,
   }
 })

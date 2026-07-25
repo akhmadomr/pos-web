@@ -34,6 +34,10 @@ function persistCart(state) {
       customerName: state.customerName,
       voucherCode: state.voucherCode,
       voucherData: state.voucherData,
+      isEditingOrder: state.isEditingOrder,
+      editingOrderId: state.editingOrderId,
+      editingOrderReason: state.editingOrderReason,
+      editingOriginalOrder: state.editingOriginalOrder,
     }),
   )
 }
@@ -49,6 +53,11 @@ export const useCartStore = defineStore('cart', () => {
   const customerName = ref(saved?.customerName ?? '')
   const voucherCode = ref(saved?.voucherCode ?? null)
   const voucherData = ref(saved?.voucherData ?? null)
+
+  const isEditingOrder = ref(saved?.isEditingOrder ?? false)
+  const editingOrderId = ref(saved?.editingOrderId ?? null)
+  const editingOrderReason = ref(saved?.editingOrderReason ?? '')
+  const editingOriginalOrder = ref(saved?.editingOriginalOrder ?? null)
 
   const subtotal = computed(() =>
     items.value.reduce(
@@ -90,7 +99,7 @@ export const useCartStore = defineStore('cart', () => {
   const itemCount = computed(() => items.value.reduce((sum, item) => sum + item.quantity, 0))
 
   watch(
-    [items, orderType, tableId, customerId, customer, customerName, voucherCode, voucherData],
+    [items, orderType, tableId, customerId, customer, customerName, voucherCode, voucherData, isEditingOrder, editingOrderId, editingOrderReason, editingOriginalOrder],
     () => {
       persistCart({
         items: items.value,
@@ -101,6 +110,10 @@ export const useCartStore = defineStore('cart', () => {
         customerName: customerName.value,
         voucherCode: voucherCode.value,
         voucherData: voucherData.value,
+        isEditingOrder: isEditingOrder.value,
+        editingOrderId: editingOrderId.value,
+        editingOrderReason: editingOrderReason.value,
+        editingOriginalOrder: editingOriginalOrder.value,
       })
     },
     { deep: true },
@@ -109,6 +122,12 @@ export const useCartStore = defineStore('cart', () => {
   function addItem(product, { variantSelections = {}, addonIds = [], quantity = 1, notes = '' } = {}) {
     const unitPrice = calculateItemUnitPrice(product, variantSelections)
     const addonsPrice = calculateAddonsPrice(product, addonIds)
+
+    const variantIds = []
+    Object.entries(variantSelections).forEach(([type, name]) => {
+      const variant = product.variants?.find((v) => v.type === type && v.name === name)
+      if (variant) variantIds.push(variant.id)
+    })
 
     const newItem = {
       id: crypto.randomUUID(),
@@ -119,6 +138,7 @@ export const useCartStore = defineStore('cart', () => {
       addons_price: addonsPrice,
       quantity,
       variant_selections: { ...variantSelections },
+      variant_ids: variantIds,
       variant_label: buildVariantLabel(product, variantSelections) || null,
       addon_ids: [...addonIds],
       addons_label: buildAddonsLabel(product, addonIds) || null,
@@ -160,6 +180,10 @@ export const useCartStore = defineStore('cart', () => {
     customerId.value = null
     customer.value = null
     customerName.value = ''
+    isEditingOrder.value = false
+    editingOrderId.value = null
+    editingOrderReason.value = ''
+    editingOriginalOrder.value = null
   }
 
   function setOrderType(type) {
@@ -210,11 +234,70 @@ export const useCartStore = defineStore('cart', () => {
       voucher_code: voucherCode.value,
       items: items.value.map((item) => ({
         product_id: item.product_id,
+        product_name: item.product_name,
         quantity: item.quantity,
+        unit_price: item.unit_price,
+        addons_price: item.addons_price,
         variant_selections: item.variant_selections ?? {},
+        variant_label: item.variant_label,
         addon_ids: item.addon_ids ?? [],
+        addons_label: item.addons_label,
         notes: item.notes,
+        subtotal: (Number(item.unit_price || 0) + Number(item.addons_price || 0)) * Number(item.quantity || 1),
       })),
+      summary: {
+        subtotal: subtotal.value,
+        discount_amount: discountAmount.value,
+        tax_amount: taxAmount.value,
+        total_amount: total.value,
+      }
+    }
+  }
+
+  function loadOrderToCart(order, reason) {
+    clearCart()
+    isEditingOrder.value = true
+    editingOrderId.value = order.id
+    editingOrderReason.value = reason
+    editingOriginalOrder.value = order
+
+    orderType.value = order.order_type
+    tableId.value = order.table_id
+    customerId.value = order.customer_id
+    customerName.value = order.customer_name
+
+    // Process order items back into cart items
+    order.order_items.forEach((item) => {
+      // In the backend, variant_selections and addon_ids might not be returned in standard format,
+      // but assuming they are available or we can just pass them as raw if we have them.
+      // Wait, order items from API might only have variant_label and addons_label.
+      // If we don't have the original selections, we might need to parse them or fetch them.
+      // Let's assume we can push a mock cart item based on the API response.
+      items.value.push({
+        id: crypto.randomUUID(),
+        product_id: item.product_id,
+        product_name: item.product_name,
+        unit_price: Number(item.unit_price),
+        addons_price: Number(item.addons_price),
+        quantity: item.quantity,
+        variant_selections: item.variant_selections || {}, // if added to backend
+        variant_label: item.variant_label,
+        addon_ids: item.addon_ids || [], // if added to backend
+        addons_label: item.addons_label,
+        notes: item.notes || null,
+      })
+    })
+
+    // If there's a voucher
+    if (order.voucher_code) {
+      voucherCode.value = order.voucher_code
+      // Might need to fetch voucher data or just set minimal data
+      voucherData.value = {
+        code: order.voucher_code,
+        name: order.discount_amount > 0 ? 'Diskon Transaksi' : 'Voucher',
+        type: 'fixed',
+        value: order.discount_amount
+      }
     }
   }
 
@@ -245,5 +328,10 @@ export const useCartStore = defineStore('cart', () => {
     applyVoucher,
     clearVoucher,
     buildOrderPayload,
+    loadOrderToCart,
+    isEditingOrder,
+    editingOrderId,
+    editingOrderReason,
+    editingOriginalOrder,
   }
 })

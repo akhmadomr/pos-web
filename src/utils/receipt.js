@@ -35,7 +35,7 @@ export function generateReceiptHTML(data, settings = {}) {
     switch(block.type) {
       case 'image':
         if (block.content) {
-          htmlBody += `<div class="center" style="margin-bottom:8px;"><img src="${escapeHtml(block.content)}" style="max-height:36px;width:auto;filter:grayscale(100%);" alt="Logo" /></div>`
+          htmlBody += `<div class="center" style="margin-bottom:8px;"><img src="${escapeHtml(block.content)}" style="max-height:24px;width:auto;filter:grayscale(100%);" alt="Logo" /></div>`
         }
         break
       case 'text':
@@ -72,6 +72,9 @@ export function generateReceiptHTML(data, settings = {}) {
               <tr><td colspan="2" style="padding-bottom:0;padding-left:8px;color:#555">+ ${escapeHtml(item.addons_label)}</td></tr>
               <tr><td style="padding-left:16px;color:#777">${item.qty}x ${formatRupiah(item.addons_price)}</td><td style="text-align:right;color:#555">${formatRupiah(addonsTotal)}</td></tr>
             `
+          }
+          if (item.notes) {
+            htmlBody += `<tr><td colspan="2" style="padding-bottom:0;padding-left:8px;color:#777;font-style:italic">"${escapeHtml(item.notes)}"</td></tr>`
           }
         }
         htmlBody += `</table><hr class="divider-dash" style="margin-bottom:6px;"/>`
@@ -161,9 +164,9 @@ export async function buildEscPosPayload(data, settings = {}) {
       case 'image':
         if (block.content) {
           try {
-            // Kurangi ukuran lebar logo menjadi 140px agar ukuran lebih proporsional dan tidak terlalu besar
+            // Kurangi ukuran lebar logo menjadi 100px agar ukuran lebih proporsional dan tidak terlalu besar
             // sehingga proses print Bluetooth menjadi lebih cepat
-            const imgData = await processImageToMonochrome(block.content, 140)
+            const imgData = await processImageToMonochrome(block.content, 100)
             if (imgData) {
               lines.push({ type: 'align', value: 'center' })
               lines.push({ type: 'image', pixels: imgData.pixels, width: imgData.width, height: imgData.height })
@@ -199,6 +202,9 @@ export async function buildEscPosPayload(data, settings = {}) {
           if (item.addons_label && Number(item.addons_price) > 0) {
             lines.push({ type: 'text', value: `  + ${item.addons_label}`, bold: false })
             lines.push({ type: 'keyvalue', key: `    ${item.qty}x ${formatRupiah(item.addons_price)}`, value: formatRupiah(Number(item.addons_price) * Number(item.qty)) })
+          }
+          if (item.notes) {
+             lines.push({ type: 'text', value: `  "${item.notes}"`, bold: false })
           }
         }
         lines.push({ type: 'separator', style: 'dashed' })
