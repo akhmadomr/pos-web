@@ -318,20 +318,31 @@ export function usePrinter() {
     }
   }
 
-  /**
-   * Auto reconnect ke device yang sudah pernah di-pair sebelumnya (tanpa klik user)
-   */
   async function autoConnectBluetooth() {
     if (isConnectingBluetooth.value) {
       return false;
     }
 
-    if (!navigator.bluetooth || typeof navigator.bluetooth.getDevices !== 'function') {
-      return false
-    }
-    
     isConnectingBluetooth.value = true
     try {
+      // 1. Coba reconnect menggunakan referensi device di memory (jika page belum di-reload)
+      // Ini menyelesaikan masalah di Chrome Mobile yang tidak mendukung getDevices()
+      if (bluetoothDevice.value) {
+        try {
+          console.log('Mencoba reconnect menggunakan referensi device di memory...');
+          await setupBluetoothDevice(bluetoothDevice.value);
+          console.log('Berhasil auto-reconnect ke memory device!');
+          return true;
+        } catch (e) {
+          console.warn('Gagal reconnect ke memory device', e);
+        }
+      }
+
+      // 2. Jika tidak ada di memory, coba Web Bluetooth getDevices() API
+      if (!navigator.bluetooth || typeof navigator.bluetooth.getDevices !== 'function') {
+        return false
+      }
+      
       const devices = await navigator.bluetooth.getDevices()
       const lastDeviceName = localStorage.getItem('last_bluetooth_device')
       
