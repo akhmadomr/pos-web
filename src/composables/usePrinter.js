@@ -180,8 +180,8 @@ export function usePrinter() {
         try {
           attempts++
           const server = await device.gatt.connect()
-          // Jeda 2 detik agar koneksi stabil sebelum menarik service
-          await new Promise(r => setTimeout(r, 2000))
+          // Jeda 500ms (jangan terlalu lama agar printer tidak keburu tidur)
+          await new Promise(r => setTimeout(r, 500))
           const services = await server.getPrimaryServices()
           return { server, services }
         } catch (err) {
@@ -192,11 +192,12 @@ export function usePrinter() {
             if (device.gatt) device.gatt.disconnect();
           } catch(e) { }
 
-          // Jika error adalah NotFoundError (biasanya karena belum siap), beri jeda lebih lama
+          // Beri jeda 1 detik agar hardware OS benar-benar merilis koneksi sebelumnya
+          await new Promise(r => setTimeout(r, 1000))
+
+          // Jika error adalah NotFoundError (biasanya karena belum siap), beri jeda ekstra
           if (err.name === 'NotFoundError') {
-             await new Promise(r => setTimeout(r, 2000))
-          } else {
-             await new Promise(r => setTimeout(r, 1500))
+             await new Promise(r => setTimeout(r, 1000))
           }
         }
       }
