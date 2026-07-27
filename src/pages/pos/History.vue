@@ -199,16 +199,16 @@ const submitCancelRequest = async () => {
   <div class="mx-auto max-w-5xl space-y-6">
     <header class="flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-black text-slate-900">Riwayat Pesanan</h1>
-        <p class="text-slate-500">Daftar pesanan yang sudah selesai atau dibatalkan pada shift ini.</p>
+        <h1 class="text-xl md:text-2xl font-black text-slate-900">Riwayat Pesanan</h1>
+        <p class="text-xs md:text-sm text-slate-500 mt-1">Daftar pesanan yang sudah selesai atau dibatalkan pada shift ini.</p>
       </div>
       <button
         type="button"
-        class="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-400 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-merchant-primary"
+        class="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-xl bg-white text-slate-400 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-merchant-primary"
         @click="loadOrders"
         :disabled="orderStore.loading"
       >
-        <i class="pi pi-refresh" :class="{ 'animate-spin': orderStore.loading }" />
+        <i class="pi pi-refresh text-sm md:text-base" :class="{ 'animate-spin': orderStore.loading }" />
       </button>
     </header>
 
@@ -239,76 +239,67 @@ const submitCancelRequest = async () => {
         :key="order.id"
         class="glass-card flex flex-col overflow-hidden"
       >
-        <div class="flex flex-col sm:flex-row sm:items-start justify-between border-b border-slate-100 p-4 gap-3 sm:gap-0">
-          <div>
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="font-bold text-slate-900">{{ order.order_number }}</span>
+        <div class="flex items-start justify-between border-b border-slate-100 p-3 md:p-4 gap-2">
+          <div class="flex-1">
+            <div class="flex flex-wrap items-center gap-1.5 md:gap-2">
+              <span class="text-sm md:text-base font-bold text-slate-900">{{ order.order_number }}</span>
               <span
-                class="rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider"
+                class="rounded-lg px-2 py-0.5 text-[9px] md:text-[10px] font-black uppercase tracking-wider"
                 :class="getStatusBadge(order.status).class"
               >
                 {{ getStatusBadge(order.status).label }}
               </span>
-              <span v-if="order.edit_status === 'pending'" class="rounded-lg bg-orange-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-orange-700">
+              <span v-if="order.edit_status === 'pending'" class="rounded-lg bg-orange-100 px-2 py-0.5 text-[9px] md:text-[10px] font-black uppercase tracking-wider text-orange-700">
                 Menunggu Persetujuan Edit
               </span>
-              <span v-else-if="order.edit_status === 'pending_cancel'" class="rounded-lg bg-rose-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-rose-700">
+              <span v-else-if="order.edit_status === 'pending_cancel'" class="rounded-lg bg-rose-100 px-2 py-0.5 text-[9px] md:text-[10px] font-black uppercase tracking-wider text-rose-700">
                 Menunggu Persetujuan Batal
               </span>
             </div>
-            <p class="text-xs text-slate-500 mt-1">{{ dayjs(order.created_at).format('DD MMM YYYY, HH:mm') }}</p>
-            <p class="text-sm font-semibold mt-1">Pelanggan: {{ order.customer_name || 'Kopirex' }}</p>
+            <p class="text-[10px] md:text-xs text-slate-500 mt-1">{{ dayjs(order.created_at).format('DD MMM YYYY, HH:mm') }}</p>
+            <p class="text-xs md:text-sm font-semibold mt-1">Pelanggan: {{ order.customer_name || 'Kopirex' }}</p>
           </div>
-          <div class="text-left sm:text-right">
-            <p class="font-bold text-merchant-primary">{{ formatRupiah(order.total_amount) }}</p>
-            <p class="text-xs font-semibold uppercase text-slate-400">
-              {{ order.order_type === 'dine_in' ? `Dine In — Meja ${order.table?.table_number ?? '-'}` : 'Take Away' }}
+          <div class="text-right shrink-0">
+            <p class="text-sm md:text-base font-bold text-merchant-primary">{{ formatRupiah(order.total_amount) }}</p>
+            <p class="text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
+              {{ order.order_type === 'dine_in' ? `DINE IN — ${order.table?.table_number ?? '-'}` : 'TAKE AWAY' }}
             </p>
           </div>
         </div>
-        <div class="flex-1 bg-slate-50/50 p-4">
-          <ul class="space-y-2">
-            <li v-for="item in order.order_items" :key="item.id" class="text-sm">
-              <span class="font-bold text-slate-900">{{ item.quantity }}x</span>
-              <span class="ml-2 text-slate-700">{{ item.product_name }}</span>
-              <p v-if="item.variant_label" class="ml-6 text-xs text-slate-500">{{ item.variant_label }}</p>
-              <p v-if="item.addons_label" class="ml-6 text-xs text-slate-500">+ {{ item.addons_label }}</p>
-              <p v-if="item.notes" class="ml-6 text-xs italic text-slate-500 font-medium">"{{ item.notes }}"</p>
-            </li>
-          </ul>
-        </div>
-        <div class="flex items-center gap-2 border-t border-slate-100 p-3 bg-white">
+
+        <div class="flex items-center gap-1.5 md:gap-2 border-t border-slate-100 p-2 md:p-3 bg-white">
           <button 
             type="button" 
             @click="openDetailModal(order)"
-            class="flex-1 rounded-xl border border-slate-200 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 transition"
+            class="flex flex-1 items-center justify-center rounded-xl border border-slate-200 py-1.5 md:py-2 text-[10px] md:text-sm font-bold text-slate-600 hover:bg-slate-50 transition"
           >
-            <i class="pi pi-eye mr-1" /> Detail
+            <i class="pi pi-eye sm:mr-1" /> <span class="hidden sm:inline">Detail</span>
           </button>
           <button 
             type="button" 
             @click="openEditModal(order)"
             :disabled="['pending', 'pending_cancel'].includes(order.edit_status) || order.status === 'cancelled'"
-            class="flex-1 rounded-xl border border-slate-200 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            class="flex flex-1 items-center justify-center rounded-xl border border-slate-200 py-1.5 md:py-2 text-[10px] md:text-sm font-bold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <i class="pi pi-pencil mr-1" /> Edit
+            <i class="pi pi-pencil sm:mr-1" /> <span class="hidden sm:inline">Edit</span>
           </button>
           <button 
             type="button" 
             @click="openCancelModal(order)"
             :disabled="['pending', 'pending_cancel'].includes(order.edit_status) || order.status === 'cancelled'"
-            class="flex-1 rounded-xl border border-rose-200 py-2 text-sm font-bold text-rose-600 hover:bg-rose-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            class="flex flex-1 items-center justify-center rounded-xl border border-rose-200 py-1.5 md:py-2 text-[10px] md:text-sm font-bold text-rose-600 hover:bg-rose-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <i class="pi pi-trash mr-1" /> Batal
+            <i class="pi pi-trash sm:mr-1" /> <span class="hidden sm:inline">Batal</span>
           </button>
           <button 
             type="button" 
             @click="handlePrint(order)"
             :disabled="printingOrderId === order.id"
-            class="flex-1 flex items-center justify-center rounded-xl bg-merchant-primary/10 py-2 text-sm font-bold text-merchant-primary hover:bg-merchant-primary/20 transition disabled:opacity-50"
+            class="flex flex-[1.5] items-center justify-center rounded-xl bg-merchant-primary/10 py-1.5 md:py-2 text-[10px] md:text-sm font-bold text-merchant-primary hover:bg-merchant-primary/20 transition disabled:opacity-50"
           >
-            <i class="pi mr-1" :class="printingOrderId === order.id ? 'pi-spinner animate-spin' : 'pi-print'" /> 
-            {{ printingOrderId === order.id ? 'Mencetak...' : 'Print Ulang' }}
+            <i class="pi" :class="printingOrderId === order.id ? 'pi-spinner animate-spin sm:mr-1' : 'pi-print sm:mr-1'" /> 
+            <span class="hidden sm:inline">{{ printingOrderId === order.id ? 'Mencetak...' : 'Print Ulang' }}</span>
+            <span class="sm:hidden">{{ printingOrderId === order.id ? 'Print...' : 'Print' }}</span>
           </button>
         </div>
       </div>
@@ -375,60 +366,60 @@ const submitCancelRequest = async () => {
     </div>
     
     <!-- Modal Detail Pesanan -->
-    <div v-if="showDetailModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div v-if="showDetailModal" class="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-4">
       <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" @click="closeDetailModal" />
       <div class="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl flex flex-col">
-        <div class="sticky top-0 bg-white p-6 border-b border-slate-100 flex justify-between items-center z-10">
-          <h3 class="text-xl font-black text-slate-900">Detail Pesanan</h3>
+        <div class="sticky top-0 bg-white p-4 md:p-6 border-b border-slate-100 flex justify-between items-center z-10">
+          <h3 class="text-lg md:text-xl font-black text-slate-900">Detail Pesanan</h3>
           <button @click="closeDetailModal" class="text-slate-400 hover:text-slate-600">
-            <i class="pi pi-times text-xl" />
+            <i class="pi pi-times text-lg md:text-xl" />
           </button>
         </div>
-        <div class="p-6 space-y-6 flex-1 overflow-y-auto">
+        <div class="p-4 md:p-6 space-y-4 md:space-y-6 flex-1 overflow-y-auto">
           <!-- Info Pesanan -->
-          <div class="space-y-3 bg-slate-50 p-4 rounded-xl">
-            <div class="flex justify-between">
-              <span class="text-sm text-slate-500">No. Order</span>
-              <span class="text-sm font-bold">{{ detailOrder?.order_number }}</span>
+          <div class="space-y-2 md:space-y-3 bg-slate-50 p-3 md:p-4 rounded-xl">
+            <div class="flex justify-between items-center">
+              <span class="text-[10px] md:text-sm text-slate-500">No. Order</span>
+              <span class="text-xs md:text-sm font-bold">{{ detailOrder?.order_number }}</span>
             </div>
-            <div class="flex justify-between">
-              <span class="text-sm text-slate-500">Pelanggan</span>
-              <span class="text-sm font-bold">{{ detailOrder?.customer_name || 'Kopirex' }}</span>
+            <div class="flex justify-between items-center">
+              <span class="text-[10px] md:text-sm text-slate-500">Pelanggan</span>
+              <span class="text-xs md:text-sm font-bold">{{ detailOrder?.customer_name || 'Kopirex' }}</span>
             </div>
-            <div class="flex justify-between">
-              <span class="text-sm text-slate-500">Waktu</span>
-              <span class="text-sm font-bold">{{ dayjs(detailOrder?.created_at).format('DD MMM YYYY, HH:mm') }}</span>
+            <div class="flex justify-between items-center">
+              <span class="text-[10px] md:text-sm text-slate-500">Waktu</span>
+              <span class="text-xs md:text-sm font-bold">{{ dayjs(detailOrder?.created_at).format('DD MMM YYYY, HH:mm') }}</span>
             </div>
-            <div class="flex justify-between">
-              <span class="text-sm text-slate-500">Tipe Order</span>
-              <span class="text-sm font-bold">{{ detailOrder?.order_type === 'dine_in' ? 'Dine In' : 'Take Away' }}</span>
+            <div class="flex justify-between items-center">
+              <span class="text-[10px] md:text-sm text-slate-500">Tipe Order</span>
+              <span class="text-xs md:text-sm font-bold">{{ detailOrder?.order_type === 'dine_in' ? 'Dine In' : 'Take Away' }}</span>
             </div>
-            <div class="flex justify-between">
-              <span class="text-sm text-slate-500">Metode Pembayaran</span>
-              <span class="text-sm font-bold capitalize">{{ detailOrder?.payment_method || '-' }}</span>
+            <div class="flex justify-between items-center">
+              <span class="text-[10px] md:text-sm text-slate-500">Metode Pembayaran</span>
+              <span class="text-xs md:text-sm font-bold capitalize">{{ detailOrder?.payment_method || '-' }}</span>
             </div>
           </div>
           
           <!-- Info Produk -->
           <div>
-            <h4 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-3">Daftar Produk</h4>
-            <ul class="space-y-3">
-              <li v-for="item in detailOrder?.order_items" :key="item.id" class="text-sm">
+            <h4 class="text-[10px] md:text-sm font-bold uppercase tracking-wider text-slate-400 mb-2 md:mb-3">Daftar Produk</h4>
+            <ul class="space-y-2 md:space-y-3">
+              <li v-for="item in detailOrder?.order_items" :key="item.id" class="text-xs md:text-sm bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
                 <div class="flex justify-between">
                   <div>
                     <span class="font-bold text-slate-900">{{ item.quantity }}x</span>
-                    <span class="ml-2 font-semibold text-slate-700">{{ item.product_name }}</span>
-                    <p v-if="item.variant_label" class="ml-6 text-xs text-slate-500">{{ item.variant_label }}</p>
+                    <span class="ml-1.5 md:ml-2 font-semibold text-slate-700">{{ item.product_name }}</span>
+                    <p v-if="item.variant_label" class="ml-5 md:ml-6 text-[10px] md:text-xs text-slate-500 mt-0.5">{{ item.variant_label }}</p>
                   </div>
-                  <div class="font-bold text-slate-900 text-right">
+                  <div class="font-bold text-slate-900 text-right shrink-0">
                     {{ formatRupiah(Number(item.unit_price) * Number(item.quantity)) }}
                   </div>
                 </div>
-                <div v-if="item.addons_label && Number(item.addons_price) > 0" class="flex justify-between mt-1">
+                <div v-if="item.addons_label && Number(item.addons_price) > 0" class="flex justify-between mt-1 pt-1 border-t border-slate-50">
                   <div>
-                    <p class="ml-6 text-xs text-slate-500">+ {{ item.addons_label }}</p>
+                    <p class="ml-5 md:ml-6 text-[10px] md:text-xs text-slate-500">+ {{ item.addons_label }}</p>
                   </div>
-                  <div class="font-bold text-slate-500 text-right text-xs">
+                  <div class="font-bold text-slate-500 text-right text-[10px] md:text-xs shrink-0">
                     {{ formatRupiah(Number(item.addons_price) * Number(item.quantity)) }}
                   </div>
                 </div>
@@ -436,34 +427,32 @@ const submitCancelRequest = async () => {
             </ul>
           </div>
           
-          <hr class="border-slate-100" />
-          
           <!-- Subtotal & Grand Total -->
-          <div class="space-y-2">
-            <div class="flex justify-between text-sm">
+          <div class="space-y-1.5 md:space-y-2 bg-slate-50 p-3 md:p-4 rounded-xl">
+            <div class="flex justify-between text-xs md:text-sm items-center">
               <span class="text-slate-500">Subtotal</span>
               <span class="font-bold">{{ formatRupiah(detailOrder?.subtotal) }}</span>
             </div>
-            <div v-if="detailOrder?.discount_amount > 0" class="flex justify-between text-sm text-emerald-600">
+            <div v-if="detailOrder?.discount_amount > 0" class="flex justify-between text-xs md:text-sm text-emerald-600 items-center">
               <span>Diskon</span>
               <span class="font-bold">-{{ formatRupiah(detailOrder?.discount_amount) }}</span>
             </div>
-            <div v-if="detailOrder?.tax_amount > 0" class="flex justify-between text-sm">
+            <div v-if="detailOrder?.tax_amount > 0" class="flex justify-between text-xs md:text-sm items-center">
               <span class="text-slate-500">PPN</span>
               <span class="font-bold">{{ formatRupiah(detailOrder?.tax_amount) }}</span>
             </div>
-            <div class="flex justify-between text-base mt-2 pt-2 border-t border-slate-200">
+            <div class="flex justify-between text-sm md:text-base mt-2 pt-2 border-t border-slate-200 items-center">
               <span class="font-black text-slate-900">Total</span>
               <span class="font-black text-merchant-primary">{{ formatRupiah(detailOrder?.total_amount) }}</span>
             </div>
           </div>
         </div>
-        <div class="p-6 border-t border-slate-100 bg-slate-50 rounded-b-2xl flex gap-2">
-          <button @click="closeDetailModal" class="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-bold text-slate-600 hover:bg-slate-100">
+        <div class="p-4 md:p-6 border-t border-slate-100 bg-white rounded-b-2xl flex gap-2">
+          <button @click="closeDetailModal" class="flex-1 rounded-xl border border-slate-200 py-2.5 md:py-3 text-xs md:text-sm font-bold text-slate-600 hover:bg-slate-50">
             Tutup
           </button>
-          <button @click="handlePrint(detailOrder)" class="flex-1 rounded-xl bg-merchant-primary py-3 text-sm font-bold text-white hover:bg-merchant-primary/90">
-            <i class="pi pi-print mr-2" /> Print Struk
+          <button @click="handlePrint(detailOrder)" class="flex-1 rounded-xl bg-merchant-primary py-2.5 md:py-3 text-xs md:text-sm font-bold text-white hover:bg-merchant-primary/90">
+            <i class="pi pi-print mr-1 md:mr-2" /> Print Struk
           </button>
         </div>
       </div>

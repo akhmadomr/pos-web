@@ -94,23 +94,23 @@ onMounted(() => {
 
 <template>
   <div class="flex h-[calc(100vh-5.5rem)] min-h-[500px] flex-col lg:h-[calc(100vh-10.5rem)] pb-20 lg:pb-0">
-    <div class="mb-4">
-      <h2 class="text-xl font-black text-slate-900">Pengeluaran Shift</h2>
-      <p class="text-sm text-slate-500">Catat pengeluaran operasional selama shift berlangsung.</p>
+    <div class="mb-3 md:mb-4">
+      <h2 class="text-lg md:text-xl font-black text-slate-900">Pengeluaran Shift</h2>
+      <p class="text-xs md:text-sm text-slate-500">Catat pengeluaran operasional selama shift berlangsung.</p>
     </div>
     
     <AppAlert v-if="error" type="error" :message="error" class="mb-4" dismissible @dismiss="error = ''" />
     <AppAlert v-if="successMessage" type="success" :message="successMessage" class="mb-4" dismissible @dismiss="successMessage = ''" />
 
-    <div class="grid flex-1 gap-6 min-h-0 lg:grid-cols-5">
+    <div class="grid flex-1 gap-4 md:gap-6 min-h-0 lg:grid-cols-5">
       <!-- Form Input -->
       <section class="flex flex-col min-h-0 lg:col-span-2">
-        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 class="mb-4 text-sm font-bold uppercase tracking-wider text-slate-400">Tambah Pengeluaran</h3>
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
+          <h3 class="mb-3 md:mb-4 text-[10px] md:text-sm font-bold uppercase tracking-wider text-slate-400">Tambah Pengeluaran</h3>
           
-          <div class="space-y-4">
+          <div class="space-y-3 md:space-y-4">
             <div>
-              <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Nama Pengeluaran</label>
+              <label class="mb-1 block text-[10px] md:text-xs font-bold uppercase tracking-wider text-slate-500">Nama Pengeluaran</label>
               <AppCreatableSelect
                 v-model="form.category"
                 :options="categories"
@@ -118,25 +118,25 @@ onMounted(() => {
               />
             </div>
             
-            <div class="flex gap-4">
-              <div class="w-24">
-                <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Qty</label>
+            <div class="flex gap-3 md:gap-4">
+              <div class="w-20 md:w-24">
+                <label class="mb-1 block text-[10px] md:text-xs font-bold uppercase tracking-wider text-slate-500">Qty</label>
                 <input
                   v-model="form.qty"
                   type="number"
                   min="0.01"
                   step="0.01"
-                  class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-center text-sm font-medium focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
+                  class="w-full rounded-xl border border-slate-200 px-2 md:px-3 py-2 md:py-2.5 text-center text-xs md:text-sm font-medium focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
                 />
               </div>
               <div class="flex-1">
-                <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Harga Satuan</label>
+                <label class="mb-1 block text-[10px] md:text-xs font-bold uppercase tracking-wider text-slate-500">Harga Satuan</label>
                 <div class="relative">
-                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">Rp</span>
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs md:text-sm font-bold text-slate-400">Rp</span>
                   <input
                     v-model="form.price_per_item"
                     type="text"
-                    class="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-4 text-sm font-medium focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
+                    class="w-full rounded-xl border border-slate-200 py-2 md:py-2.5 pl-8 md:pl-10 pr-3 md:pr-4 text-xs md:text-sm font-medium focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
                     placeholder="0"
                     @input="form.price_per_item = form.price_per_item.replace(/\D/g, '')"
                   />
@@ -144,9 +144,9 @@ onMounted(() => {
               </div>
             </div>
             
-            <div class="rounded-xl bg-slate-50 p-4 border border-slate-100 flex items-center justify-between">
-              <span class="text-sm font-bold text-slate-500">Total Harga</span>
-              <span class="text-lg font-black text-merchant-primary">{{ formatRupiah(amountPreview) }}</span>
+            <div class="rounded-xl bg-slate-50 p-3 md:p-4 border border-slate-100 flex items-center justify-between">
+              <span class="text-xs md:text-sm font-bold text-slate-500">Total Harga</span>
+              <span class="text-base md:text-lg font-black text-merchant-primary">{{ formatRupiah(amountPreview) }}</span>
             </div>
             
             <AppButton
@@ -156,7 +156,7 @@ onMounted(() => {
               :loading="loadingSubmit"
               @click="submitExpense"
             >
-              <i class="pi pi-plus" /> Simpan Pengeluaran
+              <i class="pi pi-plus text-xs md:text-base" /> <span class="text-sm">Simpan Pengeluaran</span>
             </AppButton>
           </div>
         </div>
@@ -165,27 +165,27 @@ onMounted(() => {
       <!-- History List -->
       <section class="flex flex-col min-h-0 lg:col-span-3">
         <div class="flex flex-col h-full rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div class="border-b border-slate-100 p-4 flex items-center justify-between bg-slate-50/50">
-            <h3 class="text-sm font-bold uppercase tracking-wider text-slate-400">Riwayat Pengeluaran Shift Ini</h3>
-            <span class="text-sm font-bold text-slate-900">Total: {{ formatRupiah(totalExpenses) }}</span>
+          <div class="border-b border-slate-100 p-3 md:p-4 flex items-center justify-between bg-slate-50/50">
+            <h3 class="text-[10px] md:text-sm font-bold uppercase tracking-wider text-slate-400">Riwayat Pengeluaran</h3>
+            <span class="text-xs md:text-sm font-bold text-slate-900">Total: {{ formatRupiah(totalExpenses) }}</span>
           </div>
           
-          <div class="flex-1 overflow-y-auto p-4 relative">
+          <div class="flex-1 overflow-y-auto p-3 md:p-4 relative">
             <div v-if="loading" class="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-              <i class="pi pi-spin pi-spinner text-3xl text-merchant-primary" />
+              <i class="pi pi-spin pi-spinner text-2xl md:text-3xl text-merchant-primary" />
             </div>
             
-            <div v-if="expenses.length" class="space-y-3">
-              <div v-for="exp in expenses" :key="exp.id" class="flex items-center justify-between rounded-xl border border-slate-100 p-4 hover:bg-slate-50 transition">
-                <div class="flex flex-col gap-1">
-                  <span class="font-bold text-slate-900">{{ exp.category }}</span>
-                  <div class="flex items-center gap-2 text-xs text-slate-500">
+            <div v-if="expenses.length" class="space-y-2 md:space-y-3">
+              <div v-for="exp in expenses" :key="exp.id" class="flex items-center justify-between rounded-xl border border-slate-100 p-3 md:p-4 hover:bg-slate-50 transition">
+                <div class="flex flex-col gap-0.5 md:gap-1">
+                  <span class="text-sm md:text-base font-bold text-slate-900">{{ exp.category }}</span>
+                  <div class="flex items-center gap-1.5 md:gap-2 text-[10px] md:text-xs text-slate-500">
                     <span>{{ exp.qty }} x {{ formatRupiah(exp.price_per_item) }}</span>
                     <span class="w-1 h-1 rounded-full bg-slate-300"></span>
                     <span>{{ dayjs(exp.created_at).format('HH:mm') }}</span>
                   </div>
                 </div>
-                <span class="font-black text-rose-500">{{ formatRupiah(exp.amount) }}</span>
+                <span class="text-sm md:text-base font-black text-rose-500">{{ formatRupiah(exp.amount) }}</span>
               </div>
             </div>
             

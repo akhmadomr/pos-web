@@ -375,8 +375,7 @@ const handleConfirm = async () => {
                 :disabled="!canConfirm"
                 @click="handleConfirm"
               >
-                <i class="pi pi-check" />
-                {{ cartStore.isEditingOrder ? 'Ajukan Perubahan —' : 'Konfirmasi Bayar —' }} {{ formatRupiah(cartStore.total) }}
+                {{ cartStore.isEditingOrder ? 'Ajukan Perubahan —' : 'Konfirmasi Bayar' }}
               </AppButton>
             </div>
           </footer>

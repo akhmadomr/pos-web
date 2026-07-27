@@ -66,7 +66,7 @@ export function usePrinter() {
           const bytes = jsonToEscPos(escPosPayload)
           
           // Chunk write dengan batas aman BLE
-          const CHUNK_SIZE = 40 // Naikkan ke 40 bytes agar lebih cepat
+          const CHUNK_SIZE = 20 // Standar aman BLE adalah 20 bytes
           const char = bluetoothCharacteristic.value
           
           for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
@@ -76,8 +76,8 @@ export function usePrinter() {
             } else {
               await char.writeValue(chunk)
             }
-            // Jeda 20ms antar chunk (dari 50ms) agar lebih responsif tanpa membuat printer hang
-            await new Promise(r => setTimeout(r, 20))
+            // Jeda 50ms agar printer sempat mencerna data dan tidak nge-hang
+            await new Promise(r => setTimeout(r, 50))
           }
           
           
