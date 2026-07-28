@@ -9,15 +9,18 @@ import ProfileModal from '@/components/profile/ProfileModal.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { usePrinter } from '@/composables/usePrinter'
 import { useSettingsStore } from '@/stores/settings.store'
+import { useOfflineStore } from '@/stores/offline.store'
 import logoUrl from '@/assets/logo kopirex-01.png'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
+const offlineStore = useOfflineStore()
 const printer = usePrinter()
 
-const now = ref(dayjs())
+// Gunakan offlineStore.isOffline agar konsisten dengan AppOfflineBanner
+const isOnline = computed(() => !offlineStore.isOffline)
 const showCloseModal = ref(false)
 const ignoredShiftBannerId = ref(null)
 const shiftSummaryRef = ref(null)
@@ -28,8 +31,7 @@ const isSidebarOpen = ref(false)
 const showDropdown = ref(false)
 const showProfileModal = ref(false)
 
-const isOnline = ref(navigator.onLine)
-const updateOnlineStatus = () => { isOnline.value = navigator.onLine }
+const now = ref(dayjs())
 
 const toggleFullscreen = () => {
   if (!document.fullscreenElement) {
@@ -105,14 +107,10 @@ onMounted(() => {
     isFullscreen.value = !!document.fullscreenElement
   })
 
-  window.addEventListener('online', updateOnlineStatus)
-  window.addEventListener('offline', updateOnlineStatus)
 })
 
 onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer)
-  window.removeEventListener('online', updateOnlineStatus)
-  window.removeEventListener('offline', updateOnlineStatus)
 })
 </script>
 

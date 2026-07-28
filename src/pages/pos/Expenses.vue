@@ -6,6 +6,12 @@ import AppAlert from '@/components/common/AppAlert.vue'
 import { fetchExpenses, addExpense, fetchExpenseCategories, fetchCriticalIngredients } from '@/api/shifts'
 import { formatRupiah } from '@/utils/currency'
 import dayjs from 'dayjs'
+import { db } from '@/utils/db'
+import { idbGet, idbSet } from '@/utils/indexeddb'
+import { enqueue, SYNC_TYPE } from '@/services/SyncService'
+import { useAuthStore } from '@/stores/auth.store'
+
+const authStore = useAuthStore()
 
 const expenses = ref([])
 const categories = ref([])
@@ -52,8 +58,37 @@ const loadData = async () => {
     expenses.value = expensesData
     categories.value = categoriesData.map((c) => ({ label: c, value: c }))
     ingredients.value = ingredientsData
+
+    // Cache ke IDB untuk offline
+    try {
+      await idbSet('expense-categories', categoriesData)
+      await idbSet('expense-ingredients', JSON.parse(JSON.stringify(ingredientsData)))
+    } catch { /* silent */ }
   } catch (err) {
-    error.value = 'Gagal memuat data pengeluaran.'
+    const isNetworkError = !navigator.onLine || err?.message === 'Network Error' || err?.name === 'TypeError'
+    if (isNetworkError) {
+      // Offline: load dari IndexedDB
+      try {
+        const localExpenses = await db.expenses.toArray()
+        expenses.value = localExpenses.map(e => ({
+          id: e.local_id,
+          category: e.category,
+          amount: e.amount,
+          qty: e.qty,
+          price_per_item: e.price_per_item,
+          created_at: e.created_at,
+          is_offline: e.sync_status !== 'synced',
+        }))
+        // Load kategori & bahan baku dari IDB cache
+        const cachedCategories = await idbGet('expense-categories')
+        const cachedIngredients = await idbGet('expense-ingredients')
+        if (cachedCategories) categories.value = cachedCategories.map(c => ({ label: c, value: c }))
+        if (cachedIngredients) ingredients.value = cachedIngredients
+      } catch { /* silent */ }
+      error.value = ''
+    } else {
+      error.value = 'Gagal memuat data pengeluaran.'
+    }
   } finally {
     loading.value = false
   }
@@ -66,22 +101,32 @@ const submitExpense = async () => {
   error.value = ''
   successMessage.value = ''
   
+  const payload = {
+    category: form.value.category,
+    qty: Number(form.value.qty),
+    price_per_item: Number(String(form.value.price_per_item).replace(/\D/g, '')),
+    amount: amountPreview.value,
+  }
+
   try {
-    const payload = {
-      category: form.value.category,
-      qty: Number(form.value.qty),
-      price_per_item: Number(String(form.value.price_per_item).replace(/\D/g, '')),
-      amount: amountPreview.value,
-    }
-    
     const newExpense = await addExpense(payload)
+    
+    // Cache ke IndexedDB juga (saat online)
+    const localId = 'exp_' + crypto.randomUUID()
+    await db.expenses.put({
+      local_id: localId,
+      shift_local_id: authStore.shift?.local_id ?? authStore.shift?.id,
+      ...payload,
+      created_at: new Date().toISOString(),
+      sync_status: 'synced',
+    }).catch(() => {})
+
     expenses.value.unshift(newExpense)
     
     if (!categories.value.find(c => c.value === payload.category)) {
       categories.value.push({ label: payload.category, value: payload.category })
     }
     
-    // Reset form
     form.value.category = ''
     form.value.qty = 1
     form.value.price_per_item = ''
@@ -89,7 +134,36 @@ const submitExpense = async () => {
     setTimeout(() => successMessage.value = '', 3000)
     
   } catch (err) {
-    error.value = err.response?.data?.message || 'Gagal menambahkan pengeluaran.'
+    const isNetworkError = !navigator.onLine || err?.message === 'Network Error' || err?.name === 'TypeError' || err?.code === 'ECONNABORTED' || (err?.response?.status >= 500)
+    
+    if (isNetworkError) {
+      // Offline: simpan lokal dan masuk antrian
+      const localId = 'exp_' + crypto.randomUUID()
+      const offlineExpense = {
+        local_id: localId,
+        shift_local_id: authStore.shift?.local_id ?? authStore.shift?.id,
+        ...payload,
+        created_at: new Date().toISOString(),
+        sync_status: 'pending',
+      }
+      await db.expenses.put(offlineExpense)
+      await enqueue(SYNC_TYPE.EXPENSE, payload, localId)
+
+      expenses.value.unshift({
+        id: localId,
+        ...payload,
+        created_at: new Date().toISOString(),
+        is_offline: true,
+      })
+      
+      form.value.category = ''
+      form.value.qty = 1
+      form.value.price_per_item = ''
+      successMessage.value = 'Pengeluaran disimpan offline. Akan tersinkron saat koneksi pulih.'
+      setTimeout(() => successMessage.value = '', 4000)
+    } else {
+      error.value = err.response?.data?.message || 'Gagal menambahkan pengeluaran.'
+    }
   } finally {
     loadingSubmit.value = false
   }

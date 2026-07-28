@@ -5,6 +5,8 @@ import { fetchShiftHistory } from '@/api/shifts'
 import { formatRupiah } from '@/utils/currency'
 import dayjs from 'dayjs'
 import 'dayjs/locale/id'
+import { db } from '@/utils/db'
+import { idbGet, idbSet } from '@/utils/indexeddb'
 
 dayjs.locale('id')
 
@@ -19,8 +21,43 @@ const loadHistory = async (page = 1) => {
     const data = await fetchShiftHistory({ page })
     shifts.value = data.data
     meta.value = data.meta
+
+    // Cache ke IndexedDB untuk offline
+    try {
+      await idbSet('shift-history-cache', JSON.parse(JSON.stringify(data)))
+    } catch { /* silent */ }
   } catch (error) {
-    console.error('Failed to fetch shifts:', error)
+    const isNetworkError = !navigator.onLine ||
+      error?.message === 'Network Error' ||
+      error?.name === 'TypeError'
+
+    if (isNetworkError) {
+      // Offline: coba dari IndexedDB cache
+      try {
+        const cached = await idbGet('shift-history-cache')
+        if (cached) {
+          shifts.value = cached.data ?? []
+          meta.value = cached.meta ?? { current_page: 1, last_page: 1 }
+          return
+        }
+      } catch { /* silent */ }
+
+      // Fallback ke data lokal di db.shifts
+      try {
+        const localShifts = await db.shifts.toArray()
+        // Format mirip API response
+        const grouped = {}
+        localShifts.forEach(s => {
+          const date = dayjs(s.opened_at).format('YYYY-MM-DD')
+          if (!grouped[date]) grouped[date] = { date, shifts: [], total_transactions: 0, total_revenue: 0, shift_count: 0 }
+          grouped[date].shifts.push(s.cashier_name ?? 'Kasir')
+          grouped[date].shift_count += 1
+        })
+        shifts.value = Object.values(grouped).reverse()
+      } catch { /* silent */ }
+    } else {
+      console.error('Failed to fetch shifts:', error)
+    }
   } finally {
     loading.value = false
   }

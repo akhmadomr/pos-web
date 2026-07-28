@@ -7,8 +7,11 @@ import AppModal from '@/components/common/AppModal.vue'
 import AppNumpad from '@/components/common/AppNumpad.vue'
 import { closeShift, fetchShiftSummary, fetchCriticalIngredients } from '@/api/shifts'
 import { useAuthStore } from '@/stores/auth.store'
+import { useOrderStore } from '@/stores/order.store'
 import { formatRupiah } from '@/utils/currency'
 import { PAYMENT_METHOD_LABELS } from '@/utils/shift'
+import { db } from '@/utils/db'
+import { enqueue, SYNC_TYPE } from '@/services/SyncService'
 
 const props = defineProps({
   show: {
@@ -21,6 +24,9 @@ const emit = defineEmits(['close', 'closed'])
 
 const router = useRouter()
 const authStore = useAuthStore()
+const orderStore = useOrderStore()
+
+const isOfflineClose = ref(false)
 
 const step = ref(1)
 
@@ -77,8 +83,32 @@ const loadSummary = async () => {
       notes: '',
     }))
   } catch (err) {
-    error.value = err.response?.data?.message || 'Gagal memuat ringkasan shift.'
-    summary.value = null
+    const isNetworkError = !navigator.onLine ||
+      err.message === 'Network Error' ||
+      err.name === 'TypeError' ||
+      err.code === 'ECONNABORTED' ||
+      (err.response && err.response.status >= 500)
+    
+    if (isNetworkError) {
+      // Hitung dari IndexedDB: order yang ada di shift ini
+      isOfflineClose.value = true
+      const offlineOrders = await db.offline_orders.toArray()
+      const completed = offlineOrders.filter(o => o.sync_status !== 'cancelled')
+      const totalRevenue = completed.reduce((sum, o) => sum + (o.methodData?.amount ?? 0), 0)
+      summary.value = {
+        total_transactions: completed.length,
+        total_revenue: totalRevenue,
+        system_cash: Number(authStore.shift?.opening_cash ?? 0) + totalRevenue,
+        payments_by_method: {},
+        cash_diff_threshold: 10000,
+        is_offline_summary: true,
+      }
+      stockOpnames.value = []
+      error.value = 'Mode Offline: Ringkasan dikalkulasi dari data lokal.'
+    } else {
+      error.value = err.response?.data?.message || 'Gagal memuat ringkasan shift.'
+      summary.value = null
+    }
   } finally {
     loadingSummary.value = false
   }
@@ -117,26 +147,52 @@ const submitCloseShift = async () => {
         notes: s.notes,
       }))
 
-    const response = await closeShift({
+    const closePayload = {
       closing_cash: closingCashAmount.value,
       notes: null,
       expenses: [],
       stock_opnames: formattedStockOpnames,
-    })
-
-    authStore.setShift(null)
-    apiWarnings.value = response.warnings ?? []
-
-    emit('closed', response.data)
-    emit('close')
-
-    if (apiWarnings.value.length) {
-      window.alert(apiWarnings.value.join('\n'))
     }
 
-    router.push({ name: 'shift-open' })
-  } catch (err) {
-    error.value = err.data?.message || err.response?.data?.message || 'Gagal menutup shift.'
+    try {
+      const response = await closeShift(closePayload)
+      authStore.setShift(null)
+      apiWarnings.value = response.warnings ?? []
+      emit('closed', response.data)
+      emit('close')
+      if (apiWarnings.value.length) {
+        window.alert(apiWarnings.value.join('\n'))
+      }
+      router.push({ name: 'shift-open' })
+    } catch (err) {
+      const isNetworkError = !navigator.onLine ||
+        err.message === 'Network Error' ||
+        err.name === 'TypeError' ||
+        err.code === 'ECONNABORTED' ||
+        (err.response && err.response.status >= 500)
+
+      if (isNetworkError) {
+        // OFFLINE: simpan lokal dan masukkan ke antrian sync
+        const localId = authStore.shift?.local_id ?? authStore.shift?.id
+        const now = new Date().toISOString()
+        
+        await db.shifts.where('local_id').equals(localId).modify({
+          closing_cash: closingCashAmount.value,
+          status: 'closed',
+          closed_at: now,
+          sync_status: 'pending_close',
+        }).catch(() => {})
+
+        await enqueue(SYNC_TYPE.CLOSE_SHIFT, closePayload, localId)
+
+        authStore.setShift(null)
+        emit('closed', null)
+        emit('close')
+        router.push({ name: 'shift-open' })
+      } else {
+        error.value = err.data?.message || err.response?.data?.message || 'Gagal menutup shift.'
+      }
+    }
   } finally {
     loading.value = false
   }

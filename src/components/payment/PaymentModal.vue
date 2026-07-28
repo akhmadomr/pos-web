@@ -198,7 +198,14 @@ const handleConfirm = async () => {
       change_amount: result.change_amount ?? 0,
     })
   } catch (err) {
-    if (!navigator.onLine || err.message === 'Network Error' || err.name === 'TypeError') {
+    const isNetworkOrServerError = 
+      !navigator.onLine || 
+      err.message === 'Network Error' || 
+      err.name === 'TypeError' ||
+      err.code === 'ECONNABORTED' ||
+      (err.response && err.response.status >= 500)
+
+    if (isNetworkOrServerError) {
        try {
          // Coba simpan sebagai offline fallback jika gagal di tengah jalan
          const payload = cartStore.buildOrderPayload(authStore.outletId, authStore.shift?.id)

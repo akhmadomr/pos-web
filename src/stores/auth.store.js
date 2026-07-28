@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import * as authApi from '@/api/auth'
 import * as shiftsApi from '@/api/shifts'
+import { db } from '@/utils/db'
 
 const TOKEN_KEY = 'token'
 const USER_KEY = 'user'
@@ -113,8 +114,68 @@ export const useAuthStore = defineStore('auth', () => {
       const current = await shiftsApi.fetchCurrentShift(user.value?.outlet_id ?? shift.value?.outlet_id)
       setShift(current)
       isShiftVerified.value = true
+
+      // Saat online dan berhasil, update IndexedDB juga
+      if (current?.id) {
+        try {
+          const localShift = {
+            local_id: `server_${current.id}`,
+            server_id: current.id,
+            outlet_id: current.outlet_id,
+            status: current.status ?? 'open',
+            opening_cash: current.opening_cash,
+            opened_at: current.opened_at,
+            closed_at: current.closed_at ?? null,
+            sync_status: 'synced',
+          }
+          await db.shifts.put(localShift)
+        } catch { /* silent */ }
+      }
+
       return current
-    } catch {
+    } catch (err) {
+      // Saat offline/network error: jangan hapus shift, coba dari IndexedDB
+      const isNetworkError = !navigator.onLine ||
+        err?.message === 'Network Error' ||
+        err?.name === 'TypeError' ||
+        err?.code === 'ECONNABORTED'
+
+      if (isNetworkError) {
+        // Cek apakah ada shift aktif di memory/localStorage dulu
+        const cached = shift.value
+        if (cached && cached.status === 'open') {
+          isShiftVerified.value = true
+          return cached
+        }
+
+        // Cek IndexedDB
+        try {
+          const localShift = await db.shifts
+            .where('status').equals('open')
+            .first()
+          if (localShift) {
+            const offlineShift = {
+              id: localShift.server_id ?? localShift.local_id,
+              local_id: localShift.local_id,
+              outlet_id: localShift.outlet_id,
+              outlet: user.value?.outlet,
+              status: 'open',
+              opening_cash: localShift.opening_cash,
+              opened_at: localShift.opened_at,
+              is_offline: true,
+            }
+            setShift(offlineShift)
+            isShiftVerified.value = true
+            return offlineShift
+          }
+        } catch { /* silent */ }
+        
+        // Tidak ada shift di mana pun – tetap set verified agar tidak loop
+        isShiftVerified.value = true
+        return null
+      }
+
+      // Jika error bukan karena jaringan (misal 401), baru hapus shift
       setShift(null)
       isShiftVerified.value = true
       return null

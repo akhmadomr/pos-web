@@ -61,7 +61,7 @@ export const useCartStore = defineStore('cart', () => {
 
   const subtotal = computed(() =>
     items.value.reduce(
-      (sum, item) => sum + (Number(item.unit_price) + Number(item.addons_price)) * item.quantity,
+      (sum, item) => sum + (Number(String(item.unit_price || 0).replace(/[^\d.-]/g, '')) + Number(String(item.addons_price || 0).replace(/[^\d.-]/g, ''))) * (item.quantity || 1),
       0,
     ),
   )
@@ -133,10 +133,10 @@ export const useCartStore = defineStore('cart', () => {
       id: crypto.randomUUID(),
       product_id: product.id,
       product_name: product.name,
-      image: product.image,
-      unit_price: unitPrice,
-      addons_price: addonsPrice,
-      quantity,
+      image: product.image || product.image_url || null,
+      unit_price: Number(String(unitPrice).replace(/[^\d.-]/g, '')) || 0,
+      addons_price: Number(String(addonsPrice).replace(/[^\d.-]/g, '')) || 0,
+      quantity: Number(quantity) || 1,
       variant_selections: { ...variantSelections },
       variant_ids: variantIds,
       variant_label: buildVariantLabel(product, variantSelections) || null,

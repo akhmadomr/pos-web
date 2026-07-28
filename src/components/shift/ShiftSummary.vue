@@ -1,14 +1,18 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { fetchShiftSummary } from '@/api/shifts'
 import { useAuthStore } from '@/stores/auth.store'
+import { useOfflineStore } from '@/stores/offline.store'
 import { formatRupiah } from '@/utils/currency'
 import { formatShiftDuration } from '@/utils/shift'
+import { db } from '@/utils/db'
 
 const authStore = useAuthStore()
+const offlineStore = useOfflineStore()
 
 const summary = ref(null)
 const loading = ref(false)
+const localStats = ref({ orders: 0, cups: 0, cash: 0 })
 let refreshTimer = null
 let durationTimer = null
 const tick = ref(0)
@@ -19,26 +23,64 @@ const durationLabel = computed(() => {
   return formatShiftDuration(openedAt)
 })
 
-const orderCount = computed(() => summary.value?.total_transactions ?? 0)
-const cupCount = computed(() => summary.value?.total_cups ?? 0)
-const kasFisikLabel = computed(() => formatRupiah(summary.value?.system_cash ?? 0))
+// Baca data offline order langsung dari IndexedDB yang belum tersinkron
+async function refreshLocalStats() {
+  try {
+    const allOrders = await db.offline_orders.toArray()
+    const pendingOrders = allOrders.filter(o => o.sync_status !== 'synced' && o.sync_status !== 'cancelled')
+    
+    localStats.value = pendingOrders.reduce((acc, o) => {
+      acc.orders += 1
+      // Hitung cups dari items
+      const items = o.payload?.items ?? o.payload?.order_items ?? []
+      acc.cups += items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+      // Kas hanya dari tunai
+      if (o.methodData?.payment_method === 'cash') {
+        acc.cash += Number(o.methodData?.amount || 0)
+      }
+      return acc
+    }, { orders: 0, cups: 0, cash: 0 })
+  } catch {
+    localStats.value = { orders: 0, cups: 0, cash: 0 }
+  }
+}
+
+// Saat offline/online, jumlah adalah data server + data lokal yang belum tersinkron
+const orderCount = computed(() => (summary.value?.total_transactions ?? 0) + localStats.value.orders)
+const cupCount = computed(() => (summary.value?.total_cups ?? 0) + localStats.value.cups)
+const kasFisikLabel = computed(() => {
+  if (offlineStore.isOffline && !summary.value?.system_cash) {
+    const opening = Number(authStore.shift?.opening_cash ?? 0)
+    return formatRupiah(opening + localStats.value.cash)
+  }
+  return formatRupiah((summary.value?.system_cash ?? 0) + localStats.value.cash)
+})
 
 const loadSummary = async () => {
   if (!authStore.hasActiveShift) return
 
+  // Selalu refresh data lokal
+  await refreshLocalStats()
+
+  if (offlineStore.isOffline) return // Jangan panggil API saat offline
+
   loading.value = true
   try {
     summary.value = await fetchShiftSummary(authStore.user?.outlet_id)
+    // Jangan hapus localStats, karena localStats sekarang hanya menghitung pending offline orders
   } catch {
-    summary.value = null
+    // Jika gagal, biarkan localStats yang tampil
   } finally {
     loading.value = false
   }
 }
 
+// Watcher: saat offlineStore.isOffline berubah, refresh
+watch(() => offlineStore.isOffline, () => loadSummary())
+
 onMounted(() => {
   loadSummary()
-  refreshTimer = window.setInterval(loadSummary, 60000)
+  refreshTimer = window.setInterval(loadSummary, 30000) // setiap 30 detik
   durationTimer = window.setInterval(() => {
     tick.value += 1
   }, 60000)
