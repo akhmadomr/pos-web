@@ -75,8 +75,8 @@ const isShiftEndingSoon = computed(() => {
 const navItems = [
   { label: 'Kasir', path: '/pos', icon: 'pi-shopping-bag' },
   { label: 'Pengeluaran', path: '/pos/expenses', icon: 'pi-money-bill' },
-  { label: 'Riwayat', path: '/pos/history', icon: 'pi-history' },
-  { label: 'Histori Shift', path: '/pos/shifts/history', icon: 'pi-calendar-clock' },
+  { label: 'Riwayat Pesanan', path: '/pos/history', icon: 'pi-history' },
+  { label: 'Riwayat Shift', path: '/pos/shifts/history', icon: 'pi-calendar-clock' },
 ]
 
 const isActive = (path) => route.path === path

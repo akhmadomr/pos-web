@@ -77,7 +77,7 @@ router.beforeEach(async (to) => {
   }
 
   if (authStore.isAuthenticated && to.meta.requiresAuth && !to.meta.guest) {
-    if (!authStore.shift && !to.meta.skipShiftFetch) {
+    if (!authStore.isShiftVerified && !to.meta.skipShiftFetch) {
       await authStore.fetchCurrentShift()
     }
   }

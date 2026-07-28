@@ -36,6 +36,18 @@ client.interceptors.response.use(
         offlineStore.setOffline(false)
       }
     })
+
+    if (response.data && response.data.message === 'Tidak ada shift aktif.') {
+      localStorage.removeItem('shift')
+      import('@/stores/auth.store').then(({ useAuthStore }) => {
+        const authStore = useAuthStore()
+        authStore.shift = null
+        if (window.location.pathname !== '/shift/open' && window.location.pathname !== '/login') {
+          window.location.href = '/shift/open'
+        }
+      })
+    }
+
     return response
   },
   (error) => {
@@ -61,8 +73,8 @@ client.interceptors.response.use(
           import('@/stores/auth.store').then(({ useAuthStore }) => {
             const authStore = useAuthStore()
             authStore.shift = null
-            if (window.location.pathname !== '/pos/shift/open') {
-              window.location.href = '/pos/shift/open'
+            if (window.location.pathname !== '/shift/open') {
+              window.location.href = '/shift/open'
             }
           })
         }

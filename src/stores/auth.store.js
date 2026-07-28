@@ -23,6 +23,7 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem(TOKEN_KEY))
   const shift = ref(readJson(SHIFT_KEY))
   const isLoading = ref(false)
+  const isShiftVerified = ref(false)
 
   const isAuthenticated = computed(() => Boolean(token.value))
   const hasActiveShift = computed(() => Boolean(shift.value && shift.value.status === 'open'))
@@ -111,11 +112,40 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const current = await shiftsApi.fetchCurrentShift(user.value?.outlet_id ?? shift.value?.outlet_id)
       setShift(current)
+      isShiftVerified.value = true
       return current
     } catch {
       setShift(null)
+      isShiftVerified.value = true
       return null
     }
+  }
+
+  // Listen to cross-tab storage events
+  if (typeof window !== 'undefined') {
+    window.addEventListener('storage', (event) => {
+      if (event.key === SHIFT_KEY) {
+        if (!event.newValue) {
+          shift.value = null
+          if (window.location.pathname !== '/shift/open' && window.location.pathname !== '/login') {
+            window.location.href = '/shift/open'
+          }
+        } else {
+          shift.value = JSON.parse(event.newValue)
+        }
+      }
+
+      if (event.key === TOKEN_KEY) {
+        if (!event.newValue) {
+          user.value = null
+          token.value = null
+          shift.value = null
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login'
+          }
+        }
+      }
+    })
   }
 
   return {
@@ -123,6 +153,7 @@ export const useAuthStore = defineStore('auth', () => {
     token,
     shift,
     isLoading,
+    isShiftVerified,
     isAuthenticated,
     hasActiveShift,
     cashierName,

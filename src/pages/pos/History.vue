@@ -470,17 +470,17 @@ const submitCancelRequest = async () => {
       >
         <div
           v-if="showAppAlert"
-          class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[300] flex items-center gap-3 rounded-2xl px-5 py-4 shadow-2xl backdrop-blur-md"
+          class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[300] flex w-[calc(100vw-2rem)] max-w-md sm:w-auto items-center gap-3 rounded-2xl px-4 md:px-5 py-4 shadow-2xl backdrop-blur-md"
           :class="appAlertType === 'success' ? 'bg-emerald-600/95 text-white' : 'bg-rose-600/95 text-white'"
         >
           <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20">
             <i class="pi text-xl" :class="appAlertType === 'success' ? 'pi-check' : 'pi-times'" />
           </div>
-          <div>
-            <h4 class="font-black">{{ appAlertTitle }}</h4>
-            <p class="text-sm font-medium text-white/90">{{ appAlertMessage }}</p>
+          <div class="flex-1 min-w-0">
+            <h4 class="font-black truncate">{{ appAlertTitle }}</h4>
+            <p class="text-sm font-medium text-white/90 leading-snug">{{ appAlertMessage }}</p>
           </div>
-          <button @click="showAppAlert = false" class="ml-4 p-2 text-white/70 hover:text-white transition">
+          <button @click="showAppAlert = false" class="ml-1 md:ml-4 shrink-0 p-2 text-white/70 hover:text-white transition">
             <i class="pi pi-times" />
           </button>
         </div>

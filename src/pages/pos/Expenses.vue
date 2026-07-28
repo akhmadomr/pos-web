@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import AppButton from '@/components/common/AppButton.vue'
 import AppCreatableSelect from '@/components/common/AppCreatableSelect.vue'
 import AppAlert from '@/components/common/AppAlert.vue'
-import { fetchExpenses, addExpense, fetchExpenseCategories } from '@/api/shifts'
+import { fetchExpenses, addExpense, fetchExpenseCategories, fetchCriticalIngredients } from '@/api/shifts'
 import { formatRupiah } from '@/utils/currency'
 import dayjs from 'dayjs'
 
@@ -18,6 +18,12 @@ const form = ref({
   category: '',
   qty: 1,
   price_per_item: '',
+})
+
+const ingredients = ref([])
+
+const selectedIngredient = computed(() => {
+  return ingredients.value.find(i => i.name === form.value.category)
 })
 
 const totalExpenses = computed(() => {
@@ -38,12 +44,14 @@ const loadData = async () => {
   loading.value = true
   error.value = ''
   try {
-    const [expensesData, categoriesData] = await Promise.all([
+    const [expensesData, categoriesData, ingredientsData] = await Promise.all([
       fetchExpenses(),
       fetchExpenseCategories(),
+      fetchCriticalIngredients(),
     ])
     expenses.value = expensesData
     categories.value = categoriesData.map((c) => ({ label: c, value: c }))
+    ingredients.value = ingredientsData
   } catch (err) {
     error.value = 'Gagal memuat data pengeluaran.'
   } finally {
@@ -121,13 +129,19 @@ onMounted(() => {
             <div class="flex gap-3 md:gap-4">
               <div class="w-20 md:w-24">
                 <label class="mb-1 block text-[10px] md:text-xs font-bold uppercase tracking-wider text-slate-500">Qty</label>
-                <input
-                  v-model="form.qty"
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  class="w-full rounded-xl border border-slate-200 px-2 md:px-3 py-2 md:py-2.5 text-center text-xs md:text-sm font-medium focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
-                />
+                <div class="relative">
+                  <input
+                    v-model="form.qty"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    class="w-full rounded-xl border border-slate-200 px-2 md:px-3 py-2 md:py-2.5 text-center text-xs md:text-sm font-medium focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
+                    :class="{ 'pr-8': selectedIngredient }"
+                  />
+                  <span v-if="selectedIngredient" class="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] md:text-xs font-bold text-slate-400">
+                    {{ selectedIngredient.unit }}
+                  </span>
+                </div>
               </div>
               <div class="flex-1">
                 <label class="mb-1 block text-[10px] md:text-xs font-bold uppercase tracking-wider text-slate-500">Harga Satuan</label>
