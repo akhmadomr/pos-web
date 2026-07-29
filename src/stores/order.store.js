@@ -136,6 +136,15 @@ export const useOrderStore = defineStore('order', () => {
 
   async function cancelOrder(id) {
     try {
+      const order = orders.value.find(o => o.id === id)
+      if (order?.is_offline) {
+        // batalkan transaksi offline
+        await db.offline_orders.update(id, { sync_status: 'cancelled' })
+        const idx = orders.value.findIndex((o) => o.id === id)
+        if (idx >= 0) orders.value[idx].status = 'cancelled'
+        return { success: true }
+      }
+
       const updated = await ordersApi.cancelOrder(id)
       const idx = orders.value.findIndex((o) => o.id === id)
       if (idx >= 0) orders.value[idx] = { ...orders.value[idx], status: 'cancelled', ...updated }
@@ -161,9 +170,16 @@ export const useOrderStore = defineStore('order', () => {
   }
 
   async function saveOfflineOrder(payload, methodData, orderTotal = 0, cartItems = []) {
+    const today = new Date()
+    const dateStr = today.getFullYear().toString() + (today.getMonth() + 1).toString().padStart(2, '0') + today.getDate().toString().padStart(2, '0')
+    const orderNumber = `KPX-${dateStr}-OFF${Math.floor(Math.random() * 10000)}`
+    
+    // Injeksi order_number ke payload agar server menggunakan nomor ini
+    payload.order_number = orderNumber
+
     const offlineOrder = {
-      order_number: 'OFF-' + Math.floor(Math.random() * 10000),
-      timestamp: new Date().toISOString(),
+      order_number: orderNumber,
+      timestamp: today.toISOString(),
       payload,
       methodData,
       sync_status: 'pending'
@@ -173,6 +189,14 @@ export const useOrderStore = defineStore('order', () => {
     const rawOfflineOrder = JSON.parse(JSON.stringify(offlineOrder))
     const generatedId = await db.offline_orders.add(rawOfflineOrder)
     
+    // Masukkan ke antrian sinkronisasi SyncService
+    try {
+      const { enqueue, SYNC_TYPE } = await import('@/services/SyncService')
+      await enqueue(SYNC_TYPE.ORDER, { orderPayload: payload, methodData }, generatedId)
+    } catch (e) {
+      console.error('Failed to enqueue order:', e)
+    }
+
     // Simulasikan kembalian data order
     return {
       order: {
