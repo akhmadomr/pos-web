@@ -46,7 +46,7 @@ const handleCheckout = () => {
         <p class="mt-1 text-sm text-slate-400">Pilih produk untuk memulai pesanan</p>
       </div>
 
-      <div v-else class="space-y-3 flex flex-col min-h-full">
+      <div v-else class="space-y-3 flex flex-col">
         <CartItem
           v-for="(item, index) in cartStore.items"
           :key="item.id"
@@ -55,14 +55,13 @@ const handleCheckout = () => {
           @update-qty="cartStore.updateQty"
           @remove="cartStore.removeItem"
         />
-
-        <div class="mt-auto pt-6 pb-2">
-          <OrderSummary />
-        </div>
       </div>
     </div>
 
-    <div v-if="cartStore.items.length" class="shrink-0 border-t border-slate-100 bg-white p-4">
+    <div v-if="cartStore.items.length" class="shrink-0 border-t border-slate-100 bg-slate-50 p-4 rounded-b-2xl">
+      <div class="mb-4">
+        <OrderSummary />
+      </div>
       <AppButton class="w-full py-4 text-base shadow-lg shadow-merchant-primary/20" @click="handleCheckout">
         <div class="flex items-center justify-between w-full px-2">
           <span class="flex items-center gap-2"><i class="pi pi-credit-card" /> Proses</span>
