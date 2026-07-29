@@ -185,6 +185,9 @@ const submitCancelRequest = async () => {
       await orderStore.cancelOrder(cancelingOrder.value.id)
       triggerAlert('Berhasil', 'Pesanan offline berhasil dibatalkan.', 'success')
     } else {
+      if (!navigator.onLine) {
+        throw new Error('Anda tidak dapat membatalkan pesanan server saat sedang mode offline. Harap terhubung ke internet terlebih dahulu.')
+      }
       await client.post(`/pos/orders/${cancelingOrder.value.id}/request-cancel`, {
         reason: cancelReason.value
       })
