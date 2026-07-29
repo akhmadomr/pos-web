@@ -154,8 +154,25 @@ const handleConfirm = async () => {
     }
 
     if (cartStore.isEditingOrder) {
+      if (cartStore.editingOriginalOrder?.is_offline) {
+        // Jika yang diedit adalah transaksi offline yang belum tersinkronisasi
+        // Batalkan yang lama secara lokal, lalu buat pesanan offline baru sebagai pengganti
+        const { useOrderStore } = await import('@/stores/order.store')
+        const orderStore = useOrderStore()
+        await orderStore.cancelOrder(cartStore.editingOrderId)
+        
+        const offlineResult = await orderStore.saveOfflineOrder(payload, methodData, cartStore.total, cartStore.items)
+        emit('paid', {
+          order: offlineResult.order,
+          payment: offlineResult.payment,
+          receipt_data: offlineResult.payment.receipt_data,
+          change_amount: offlineResult.payment.change_amount,
+        })
+        return
+      }
+
       if (!navigator.onLine) {
-        throw new Error('Tidak dapat mengajukan edit transaksi dalam mode offline.')
+        throw new Error('Tidak dapat mengajukan edit transaksi server dalam mode offline.')
       }
       const editPayload = {
         ...payload,

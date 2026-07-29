@@ -180,11 +180,17 @@ const submitCancelRequest = async () => {
   
   isSubmittingCancel.value = true
   try {
-    await client.post(`/pos/orders/${cancelingOrder.value.id}/request-cancel`, {
-      reason: cancelReason.value
-    })
+    if (cancelingOrder.value?.is_offline) {
+      // Jika pesanan offline, batalkan langsung tanpa request ke server
+      await orderStore.cancelOrder(cancelingOrder.value.id)
+      triggerAlert('Berhasil', 'Pesanan offline berhasil dibatalkan.', 'success')
+    } else {
+      await client.post(`/pos/orders/${cancelingOrder.value.id}/request-cancel`, {
+        reason: cancelReason.value
+      })
+      triggerAlert('Pengajuan Terkirim', 'Pengajuan pembatalan berhasil dikirim. Silahkan hubungi admin.', 'success')
+    }
     
-    triggerAlert('Pengajuan Terkirim', 'Pengajuan pembatalan berhasil dikirim. Silahkan hubungi admin.', 'success')
     closeCancelModal()
     loadOrders()
   } catch (err) {
