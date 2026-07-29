@@ -117,7 +117,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex h-[calc(100vh-5.5rem)] min-h-[500px] flex-col lg:h-[calc(100vh-10.5rem)] landscape:h-[calc(100vh-4.5rem)] relative">
+  <div class="flex flex-1 min-h-0 flex-col">
     <AppAlert
       v-if="productStore.error"
       type="error"

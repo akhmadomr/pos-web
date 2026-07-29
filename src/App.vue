@@ -49,6 +49,12 @@ onMounted(async () => {
 
   // Update jumlah pending saat pertama kali
   await updatePendingCount()
+  
+  // Langsung proses antrian jika ada dan sedang online
+  if (navigator.onLine && authStore.isAuthenticated) {
+    await processQueue()
+    await updatePendingCount()
+  }
 })
 
 import { onUnmounted } from 'vue'

@@ -115,7 +115,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex min-h-screen bg-slate-100">
+  <div class="flex h-screen bg-slate-100 overflow-hidden">
     <!-- Overlay for Sidebar -->
     <div 
       v-if="isSidebarOpen" 
@@ -319,7 +319,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <main class="flex-1 p-2 sm:p-4 lg:p-6">
+      <main class="flex-1 flex flex-col min-h-0 p-2 sm:p-4 lg:p-6 overflow-y-auto">
         <router-view />
       </main>
     </div>

@@ -2,8 +2,6 @@
 import { useCartStore } from '@/stores/cart.store'
 import { formatRupiah } from '@/utils/currency'
 import { SERVICE_CHARGE_RATE, TAX_RATE } from '@/utils/order'
-import VoucherInput from '@/components/order/VoucherInput.vue'
-import CustomerSelect from '@/components/order/CustomerSelect.vue'
 import { useSettingsStore } from '@/stores/settings.store'
 
 defineProps({
@@ -19,11 +17,7 @@ const settingsStore = useSettingsStore()
 
 <template>
   <div class="space-y-4">
-    <template v-if="showExtras">
-      <CustomerSelect />
-      <VoucherInput />
-      <div class="border-t border-slate-100" />
-    </template>
+    <!-- Fields Pelanggan & Voucher dihilangkan sesuai permintaan -->
 
     <div class="space-y-2 text-sm">
       <div class="flex justify-between text-slate-600">
