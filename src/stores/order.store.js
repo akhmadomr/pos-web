@@ -22,8 +22,81 @@ export const useOrderStore = defineStore('order', () => {
     error.value = null
     try {
       const result = await ordersApi.fetchOrders()
-      orders.value = Array.isArray(result) ? result : result.data ?? []
+      const serverOrders = Array.isArray(result) ? result : result.data ?? []
+      
+      // Cache ke IndexedDB untuk offline
+      try {
+        const plain = JSON.parse(JSON.stringify(serverOrders))
+        await db.offline_orders.bulkPut(plain.map(o => ({
+          id: o.id,
+          order_number: o.order_number,
+          payload: o,
+          methodData: { payment_method: o.payment_method, amount: o.total_amount },
+          sync_status: 'synced',
+          created_at: o.created_at,
+        })))
+      } catch { /* silent */ }
+      
+      // Ambil transaksi offline lokal yang belum tersinkronisasi
+      let pendingOrders = []
+      try {
+        const localOrders = await db.offline_orders.toArray()
+        pendingOrders = localOrders
+          .filter(o => o.sync_status !== 'synced' && o.sync_status !== 'cancelled')
+          .map(o => ({
+            ...(o.payload ?? {}),
+            id: o.id,
+            order_number: o.order_number ?? o.payload?.order_number,
+            status: o.payload?.status ?? 'completed',
+            total_amount: o.methodData?.amount ?? o.payload?.total_amount ?? 0,
+            payment_method: o.methodData?.payment_method ?? o.payload?.payment_method,
+            created_at: o.created_at ?? o.payload?.created_at,
+            is_offline: true,
+            order_items: o.payload?.order_items ?? o.payload?.items?.map(i => ({
+              product_name: i.name ?? i.product_name,
+              quantity: i.qty ?? i.quantity,
+              unit_price: i.unit_price,
+              total_price: i.total ?? i.total_price,
+            })) ?? [],
+          }))
+      } catch { /* silent */ }
+
+      // Gabungkan data pending offline ke paling atas
+      orders.value = [...pendingOrders.reverse(), ...serverOrders]
     } catch (err) {
+      const isNetworkError = !navigator.onLine ||
+        err?.message === 'Network Error' ||
+        err?.name === 'TypeError'
+
+      if (isNetworkError) {
+        // Offline: baca dari IndexedDB, gabungkan server cache + pending
+        try {
+          const localOrders = await db.offline_orders.toArray()
+          orders.value = localOrders.map(o => ({
+            // Jika ini dari cache server, ambil payload langsung
+            ...(o.payload ?? {}),
+            id: o.id,
+            order_number: o.order_number ?? o.payload?.order_number,
+            status: o.payload?.status ?? 'completed',
+            total_amount: o.methodData?.amount ?? o.payload?.total_amount ?? 0,
+            payment_method: o.methodData?.payment_method ?? o.payload?.payment_method,
+            created_at: o.created_at ?? o.payload?.created_at,
+            is_offline: o.sync_status !== 'synced',
+            order_items: o.payload?.order_items ?? o.payload?.items?.map(i => ({
+              product_name: i.name ?? i.product_name,
+              quantity: i.qty ?? i.quantity,
+              unit_price: i.unit_price,
+              total_price: i.total ?? i.total_price,
+            })) ?? [],
+          })).reverse()
+          error.value = null
+        } catch {
+          orders.value = []
+          error.value = 'Gagal memuat riwayat pesanan.'
+        }
+        return
+      }
+
       error.value = err.response?.data?.message ?? 'Gagal memuat order.'
       orders.value = []
     } finally {

@@ -29,6 +29,8 @@ export const useProductStore = defineStore('product', () => {
     ]
   })
 
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 jam
+
   async function fetchProducts(outletId) {
     loading.value = true
     error.value = null
@@ -41,20 +43,26 @@ export const useProductStore = defineStore('product', () => {
       products.value = Array.isArray(result) ? result : []
       lastFetchedAt.value = new Date().toISOString()
       
-      // Simpan ke IndexedDB untuk offline fallback
+      // Simpan ke IndexedDB untuk offline fallback (dengan timestamp cache)
       try {
+        const now = new Date().toISOString()
+        const enriched = JSON.parse(JSON.stringify(products.value)).map(p => ({ ...p, cached_at: now }))
         await db.products.clear()
-        await db.products.bulkAdd(JSON.parse(JSON.stringify(products.value)))
+        await db.products.bulkPut(enriched)
       } catch (dbErr) {
         console.warn('Gagal menyimpan ke IndexedDB', dbErr)
       }
     } catch (err) {
-      if (!navigator.onLine || err.message === 'Network Error' || err.name === 'TypeError' || err.message?.includes('fetch')) {
+      if (!navigator.onLine || err.message === 'Network Error' || err.name === 'TypeError' || err.message?.includes('fetch') || err.message === 'Offline') {
         // Fallback baca dari IndexedDB
         const offlineProducts = await db.products.toArray()
         if (offlineProducts.length > 0) {
+          const cachedAt = offlineProducts[0]?.cached_at
+          const isStale = cachedAt ? (Date.now() - new Date(cachedAt).getTime() > CACHE_TTL_MS) : true
           products.value = offlineProducts
-          error.value = 'Mode Offline: Menampilkan data tersimpan'
+          error.value = isStale
+            ? 'Mode Offline: Data produk mungkin sudah tidak terkini (> 24 jam).'
+            : null
           return
         }
       }

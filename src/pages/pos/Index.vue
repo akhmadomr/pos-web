@@ -117,7 +117,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex h-[calc(100vh-5.5rem)] min-h-[500px] flex-col lg:h-[calc(100vh-10.5rem)] relative">
+  <div class="flex h-[calc(100vh-5.5rem)] min-h-[500px] flex-col lg:h-[calc(100vh-10.5rem)] landscape:h-[calc(100vh-4.5rem)] relative">
     <AppAlert
       v-if="productStore.error"
       type="error"
@@ -137,8 +137,15 @@ onMounted(() => {
       <button @click="cartStore.clearCart()" class="text-xs font-bold text-amber-700 hover:text-amber-900 underline">Batalkan Edit</button>
     </div>
 
-    <div class="grid min-h-0 flex-1 gap-4 pb-20 lg:grid-cols-5 lg:gap-6 lg:pb-0">
-      <section class="flex min-h-0 min-w-0 flex-col gap-4 lg:col-span-3">
+    <!-- Layout Grid: Mobile portrait (< 640px) = 1 col, Tablet/Desktop (>= 640px) = side-by-side -->
+    <div class="grid min-h-0 flex-1 gap-3 pb-20
+      landscape:grid-cols-[1fr_280px] landscape:gap-3 landscape:pb-0
+      sm:grid-cols-[1fr_300px] sm:gap-4 sm:pb-0
+      md:grid-cols-[1fr_320px] md:gap-5
+      lg:grid-cols-[1fr_350px] lg:gap-6 xl:grid-cols-5">
+
+      <!-- Produk Section -->
+      <section class="flex min-h-0 min-w-0 flex-col gap-2 landscape:gap-2 sm:gap-3 lg:gap-4 xl:col-span-3">
         <CategoryTabs v-model="selectedCategory" :categories="productStore.categories" />
         <ProductSearch v-model="searchQuery" />
         <div class="min-h-0 flex-1 overflow-y-auto pr-1">
@@ -150,16 +157,16 @@ onMounted(() => {
         </div>
       </section>
 
-      <!-- Desktop Cart -->
-      <section class="hidden min-h-0 lg:col-span-2 lg:block">
+      <!-- Keranjang Samping: SM+, Landscape Tablet + Desktop -->
+      <section class="hidden min-h-0 landscape:flex landscape:flex-col sm:flex sm:flex-col xl:col-span-2">
         <OrderCart class="h-full" @checkout="handleCheckout" />
       </section>
     </div>
 
-    <!-- Mobile Bottom Deck Cart -->
+    <!-- Mobile Portrait Bottom Deck Cart (disembunyikan di landscape & sm+) -->
     <div
       v-if="cartStore.items.length > 0"
-      class="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-3xl border-t border-slate-200 bg-white shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.15)] transition-all duration-300 ease-in-out lg:hidden"
+      class="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-3xl border-t border-slate-200 bg-white shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.15)] transition-all duration-300 ease-in-out landscape:hidden sm:hidden"
       :class="isCartExpanded ? 'h-[85vh]' : 'h-auto'"
     >
       <div 

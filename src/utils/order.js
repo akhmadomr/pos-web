@@ -27,12 +27,12 @@ export function buildDefaultVariantSelections(variants = []) {
 }
 
 export function calculateItemUnitPrice(product, variantSelections = {}) {
-  let price = Number(product.selling_price ?? 0)
+  let price = Number(String(product.selling_price ?? 0).replace(/[^\d.-]/g, '')) || 0
 
   Object.entries(variantSelections).forEach(([type, name]) => {
     const variant = product.variants?.find((v) => v.type === type && v.name === name)
     if (variant) {
-      price += Number(variant.price_adjustment ?? 0)
+      price += Number(String(variant.price_adjustment ?? 0).replace(/[^\d.-]/g, '')) || 0
     }
   })
 
@@ -44,7 +44,7 @@ export function calculateAddonsPrice(product, addonIds = []) {
 
   return addonIds.reduce((sum, id) => {
     const addon = product.addons?.find((a) => a.id === id)
-    return sum + Number(addon?.price ?? 0)
+    return sum + (Number(String(addon?.price ?? 0).replace(/[^\d.-]/g, '')) || 0)
   }, 0)
 }
 

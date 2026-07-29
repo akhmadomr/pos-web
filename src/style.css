@@ -9,6 +9,9 @@
   --shadow-premium: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
+/* Custom variant: landscape orientation (untuk tablet landscape mode) */
+@custom-variant landscape (@media (orientation: landscape));
+
 @layer base {
   body {
     @apply bg-slate-50 text-slate-900 antialiased;

@@ -29,7 +29,7 @@ watch(
 )
 
 const lineTotal = () =>
-  (Number(props.item.unit_price) + Number(props.item.addons_price)) * props.item.quantity
+  (Number(String(props.item.unit_price || 0).replace(/[^\d.-]/g, '')) + Number(String(props.item.addons_price || 0).replace(/[^\d.-]/g, ''))) * (Number(props.item.quantity) || 1)
 </script>
 
 <template>
