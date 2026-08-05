@@ -67,7 +67,7 @@ if (!self.define) {
     });
   };
 }
-define(['./workbox-970124e6'], (function (workbox) { 'use strict';
+define(['./workbox-8d0d8005'], (function (workbox) { 'use strict';
 
   self.skipWaiting();
   workbox.clientsClaim();
@@ -80,17 +80,32 @@ define(['./workbox-970124e6'], (function (workbox) { 'use strict';
     "url": "registerSW.js",
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
-    "url": "index.html",
-    "revision": "0.18jh4q20q4k"
+    "url": "/index.html",
+    "revision": "0.98cu2l42bbs"
   }], {});
   workbox.cleanupOutdatedCaches();
-  workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
-    allowlist: [/^\/$/]
+  workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("/index.html"), {
+    allowlist: [/^\/$/],
+    denylist: [/^\/api\//]
   }));
   workbox.registerRoute(/\/api\/.*/i, new workbox.NetworkFirst({
     "cacheName": "kopirex-api-cache",
+    "networkTimeoutSeconds": 5,
     plugins: [new workbox.ExpirationPlugin({
-      maxEntries: 50,
+      maxEntries: 100,
+      maxAgeSeconds: 86400
+    }), new workbox.CacheableResponsePlugin({
+      statuses: [0, 200]
+    })]
+  }), 'GET');
+  workbox.registerRoute(({
+    url
+  }) => {
+    return /\.(png|jpg|jpeg|webp|svg|gif|ico)$/i.test(url.pathname);
+  }, new workbox.CacheFirst({
+    "cacheName": "kopirex-images-cache",
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 300,
       maxAgeSeconds: 604800
     }), new workbox.CacheableResponsePlugin({
       statuses: [0, 200]

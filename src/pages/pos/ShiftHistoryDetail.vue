@@ -256,9 +256,25 @@ const getRankBadgeClass = (idx) => {
     </div>
 
     <template v-else-if="currentView">
+      <!-- Info Daftar Shift (Hanya di Ringkasan Harian) -->
+      <div v-if="currentView.isDaily" class="rounded-xl md:rounded-2xl border border-slate-100 bg-white p-4 sm:p-6 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] mb-6">
+        <h2 class="mb-4 flex items-center gap-2 text-sm md:text-base font-black uppercase tracking-widest text-slate-900">
+          <i class="pi pi-users text-merchant-primary" /> Penanggung Jawab Shift
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+          <div v-for="(s, idx) in dailyData.shifts" :key="s.id" class="rounded-xl border border-slate-100 bg-slate-50 p-3 md:p-4">
+            <p class="text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{{ s.schedule?.name ?? `Shift ${idx + 1}` }}</p>
+            <div class="flex items-center gap-2">
+              <i class="pi pi-user text-slate-400 text-sm"></i>
+              <p class="text-xs md:text-sm font-black text-slate-900">{{ s.closed_by?.name || (s.closed_at ? '-' : 'Belum Ditutup') }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Info Shift Card (Hanya muncul jika bukan tab harian) -->
-      <div v-if="!currentView.isDaily && currentView.shift" class="rounded-xl md:rounded-2xl border border-slate-100 bg-white p-3 sm:p-6 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
-        <div class="grid grid-cols-2 gap-3 md:gap-4 md:grid-cols-4">
+      <div v-if="!currentView.isDaily && currentView.shift" class="rounded-xl md:rounded-2xl border border-slate-100 bg-white p-3 sm:p-6 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] mb-6">
+        <div class="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-5">
           <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 md:border-0 md:bg-transparent md:p-0">
             <p class="text-[9px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Kasir</p>
             <p class="mt-0.5 md:mt-1 text-sm sm:text-lg font-black text-slate-900 truncate">{{ currentView.shift.cashier?.name || '-' }}</p>
@@ -272,6 +288,10 @@ const getRankBadgeClass = (idx) => {
             <p class="mt-0.5 md:mt-1 text-xs sm:text-base font-bold" :class="currentView.shift.closed_at ? 'text-slate-900' : 'text-amber-500'">
               {{ currentView.shift.closed_at ? dayjs(currentView.shift.closed_at).format('DD MMM, HH:mm') : 'Shift Aktif' }}
             </p>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 md:border-0 md:bg-transparent md:p-0">
+            <p class="text-[9px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Penutup</p>
+            <p class="mt-0.5 md:mt-1 text-sm sm:text-base font-black text-slate-900 truncate">{{ currentView.shift.closed_by?.name || '-' }}</p>
           </div>
           <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 md:border-0 md:bg-transparent md:p-0">
             <p class="text-[9px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Kas Awal</p>
