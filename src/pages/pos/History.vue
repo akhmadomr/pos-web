@@ -258,6 +258,14 @@ const submitCancelRequest = async () => {
               >
                 {{ getStatusBadge(order.status).label }}
               </span>
+              <span
+                v-if="order.payment_method"
+                class="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[9px] md:text-[10px] font-black uppercase tracking-wider"
+                :class="order.payment_method === 'cash' ? 'bg-emerald-50 text-emerald-700' : (order.payment_method === 'qris' ? 'bg-violet-50 text-violet-700' : 'bg-slate-100 text-slate-600')"
+              >
+                <i :class="order.payment_method === 'cash' ? 'pi pi-money-bill' : (order.payment_method === 'qris' ? 'pi pi-qrcode' : 'pi pi-credit-card')" class="text-[8px] md:text-[9px]" />
+                {{ order.payment_method === 'cash' ? 'Tunai' : (order.payment_method === 'qris' ? 'QRIS' : order.payment_method) }}
+              </span>
               <span v-if="order.edit_status === 'pending'" class="rounded-lg bg-orange-100 px-2 py-0.5 text-[9px] md:text-[10px] font-black uppercase tracking-wider text-orange-700">
                 Menunggu Persetujuan Edit
               </span>

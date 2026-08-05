@@ -18,6 +18,7 @@ const success = ref('')
 
 const form = ref({
   name: '',
+  email: '',
   phone: '',
   password: '',
   password_confirmation: '',
@@ -28,6 +29,7 @@ watch(
   (val) => {
     if (val) {
       form.value.name = authStore.user?.name || ''
+      form.value.email = authStore.user?.email || ''
       form.value.phone = authStore.user?.phone || ''
       form.value.password = ''
       form.value.password_confirmation = ''
@@ -44,6 +46,7 @@ const handleSave = async () => {
   try {
     const payload = {
       name: form.value.name,
+      email: form.value.email,
       phone: form.value.phone,
     }
     if (form.value.password) {
@@ -113,7 +116,15 @@ const handleSave = async () => {
             />
           </div>
           <div>
-            <label class="mb-1 block text-xs font-bold text-slate-500">Nomor Telepon</label>
+            <label class="mb-1 block text-xs font-bold text-slate-500">Email <span class="text-slate-400 font-normal">(Opsional)</span></label>
+            <input
+              v-model="form.email"
+              type="email"
+              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:border-merchant-primary focus:outline-none focus:ring-1 focus:ring-merchant-primary"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-bold text-slate-500">Nomor Telepon <span class="text-slate-400 font-normal">(Opsional)</span></label>
             <input
               v-model="form.phone"
               type="text"

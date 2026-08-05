@@ -28,7 +28,9 @@ const orderStore = useOrderStore()
 
 const isOfflineClose = ref(false)
 
-const step = ref(1)
+const step = ref(0)
+
+const picName = ref('')
 
 const summary = ref(null)
 const closingCash = ref('')
@@ -118,7 +120,8 @@ watch(
   () => props.show,
   (visible) => {
     if (visible) {
-      step.value = 1
+      step.value = 0
+      picName.value = authStore.user?.name ?? ''
       closingCash.value = ''
       apiWarnings.value = []
       loadSummary()
@@ -149,7 +152,7 @@ const submitCloseShift = async () => {
 
     const closePayload = {
       closing_cash: closingCashAmount.value,
-      notes: null,
+      notes: picName.value ? `Penanggung Jawab: ${picName.value}` : null,
       expenses: [],
       stock_opnames: formattedStockOpnames,
     }
@@ -206,7 +209,33 @@ const submitCloseShift = async () => {
     </div>
 
     <template v-else-if="summary">
-      <div v-if="step === 1" class="grid gap-4 lg:gap-6 lg:grid-cols-2">
+      <!-- Step 0: Penanggung Jawab -->
+      <div v-if="step === 0" class="space-y-6 py-2">
+        <div class="flex items-center justify-center">
+          <div class="flex h-20 w-20 items-center justify-center rounded-full bg-merchant-primary/10">
+            <i class="pi pi-user text-4xl text-merchant-primary" />
+          </div>
+        </div>
+        <div class="text-center">
+          <h3 class="text-lg font-black text-slate-900">Konfirmasi Penanggung Jawab</h3>
+          <p class="mt-1 text-sm text-slate-500">Pastikan nama penanggung jawab shift ini sudah benar sebelum melanjutkan.</p>
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-xs font-bold uppercase tracking-wider text-slate-500">Nama Penanggung Jawab</label>
+          <div class="relative">
+            <i class="pi pi-user absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              v-model="picName"
+              type="text"
+              placeholder="Nama penanggung jawab shift..."
+              class="w-full rounded-xl border border-slate-200 py-3 pl-10 pr-4 text-sm font-semibold focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
+            />
+          </div>
+          <p class="text-xs text-slate-400">Terisi otomatis dari akun yang sedang login. Dapat diubah jika diperlukan.</p>
+        </div>
+      </div>
+
+      <div v-else-if="step === 1" class="grid gap-4 lg:gap-6 lg:grid-cols-2">
         <div class="space-y-2 sm:space-y-4">
           <h4 class="hidden sm:block text-sm font-bold uppercase tracking-wider text-slate-400">Ringkasan Shift</h4>
 
@@ -352,8 +381,24 @@ const submitCloseShift = async () => {
     </template>
 
     <template #footer>
-      <div v-if="step === 1" class="flex gap-2 w-full">
+      <div v-if="step === 0" class="flex gap-2 w-full">
         <AppButton variant="secondary" @click="handleClose" class="flex-1">Batal</AppButton>
+        <AppButton
+          variant="primary"
+          class="flex-1"
+          :disabled="!picName.trim()"
+          @click="step = 1"
+        >
+          Lanjut Input Kas
+          <i class="pi pi-arrow-right ml-2" />
+        </AppButton>
+      </div>
+      <div v-else-if="step === 1" class="flex gap-2 w-full">
+        <AppButton variant="secondary" @click="step = 0" class="flex-1">
+          <i class="pi pi-arrow-left mr-1" />
+          <span class="hidden sm:inline">Kembali</span>
+          <span class="sm:hidden">Back</span>
+        </AppButton>
         <AppButton 
           variant="primary" 
           class="flex-1"
