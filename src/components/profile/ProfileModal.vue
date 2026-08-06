@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import client from '@/api/client'
 
 const props = defineProps({
-  show: Boolean,
+  show: Boolean,  
 })
 
 const emit = defineEmits(['close'])
