@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import AppButton from '@/components/common/AppButton.vue'
 import AppCreatableSelect from '@/components/common/AppCreatableSelect.vue'
 import AppAlert from '@/components/common/AppAlert.vue'
-import { fetchExpenses, addExpense, fetchExpenseCategories, fetchCriticalIngredients } from '@/api/shifts'
+import { fetchExpenses, addExpense, fetchExpenseCategories, fetchCriticalIngredients, requestEditExpense, requestCancelExpense } from '@/api/shifts'
 import { formatRupiah } from '@/utils/currency'
 import dayjs from 'dayjs'
 import { db } from '@/utils/db'
@@ -169,6 +169,74 @@ const submitExpense = async () => {
   }
 }
 
+const cancelingExpense = ref(null)
+const cancelReason = ref('')
+const loadingCancel = ref(false)
+
+const openCancelModal = (exp) => {
+  cancelingExpense.value = exp
+  cancelReason.value = ''
+}
+
+const submitCancel = async () => {
+  if (!cancelReason.value) {
+    error.value = 'Alasan pembatalan harus diisi.'
+    return
+  }
+  
+  loadingCancel.value = true
+  try {
+    await requestCancelExpense(cancelingExpense.value.id, cancelReason.value)
+    successMessage.value = 'Pengajuan pembatalan berhasil dikirim. Silahkan tunggu admin.'
+    cancelingExpense.value = null
+    loadData()
+  } catch (err) {
+    error.value = err.response?.data?.message || 'Gagal mengajukan pembatalan.'
+  } finally {
+    loadingCancel.value = false
+  }
+}
+
+const editingExpense = ref(null)
+const editReason = ref('')
+const editData = ref({ amount: '', qty: 1, price_per_item: '' })
+const loadingEdit = ref(false)
+
+const openEditModal = (exp) => {
+  editingExpense.value = exp
+  editReason.value = ''
+  editData.value = { 
+    amount: exp.amount, 
+    qty: exp.qty, 
+    price_per_item: exp.price_per_item 
+  }
+}
+
+const submitEdit = async () => {
+  if (!editReason.value) {
+    error.value = 'Alasan edit harus diisi.'
+    return
+  }
+  
+  loadingEdit.value = true
+  try {
+    await requestEditExpense(editingExpense.value.id, {
+      reason: editReason.value,
+      amount: Number(editData.value.amount),
+      category: editingExpense.value.category,
+      qty: Number(editData.value.qty),
+      price_per_item: Number(editData.value.amount) / Number(editData.value.qty)
+    })
+    successMessage.value = 'Pengajuan edit berhasil dikirim. Silahkan tunggu admin.'
+    editingExpense.value = null
+    loadData()
+  } catch (err) {
+    error.value = err.response?.data?.message || 'Gagal mengajukan edit.'
+  } finally {
+    loadingEdit.value = false
+  }
+}
+
 onMounted(() => {
   loadData()
 })
@@ -273,7 +341,20 @@ onMounted(() => {
                     <span>{{ dayjs(exp.created_at).format('HH:mm') }}</span>
                   </div>
                 </div>
-                <span class="text-sm md:text-base font-black text-rose-500">{{ formatRupiah(exp.amount) }}</span>
+                <div class="flex flex-col items-end gap-2">
+                  <span class="text-sm md:text-base font-black text-rose-500">{{ formatRupiah(exp.amount) }}</span>
+                  <div class="flex gap-2" v-if="!exp.edit_status">
+                    <button @click="openEditModal(exp)" class="flex flex-1 items-center justify-center rounded-xl bg-amber-50 px-3 py-1.5 text-[10px] font-bold text-amber-600 transition hover:bg-amber-100 active:scale-95" title="Ajukan Edit">
+                      <i class="pi pi-pencil sm:mr-1" /> <span class="hidden sm:inline">Edit</span>
+                    </button>
+                    <button @click="openCancelModal(exp)" class="flex flex-1 items-center justify-center rounded-xl bg-rose-50 px-3 py-1.5 text-[10px] font-bold text-rose-600 transition hover:bg-rose-100 active:scale-95" title="Ajukan Batal">
+                      <i class="pi pi-trash sm:mr-1" /> <span class="hidden sm:inline">Batal</span>
+                    </button>
+                  </div>
+                  <span v-else class="text-[10px] font-bold text-amber-500 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 uppercase">
+                    Menunggu Review
+                  </span>
+                </div>
               </div>
             </div>
             
@@ -284,6 +365,86 @@ onMounted(() => {
           </div>
         </div>
       </section>
+    </div>
+
+    <!-- Modal Pengajuan Batal -->
+    <div v-if="cancelingExpense" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="cancelingExpense = null"></div>
+      <div class="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <h3 class="mb-2 text-xl font-black text-rose-600">Pengajuan Batal Pengeluaran</h3>
+        <p class="mb-4 text-sm text-slate-500">
+          Pengeluaran <strong>{{ cancelingExpense?.category }}</strong>. Masukkan alasan pembatalan. Permintaan ini harus disetujui oleh admin.
+        </p>
+        <textarea
+          v-model="cancelReason"
+          rows="3"
+          placeholder="Alasan batal..."
+          class="mb-4 w-full rounded-xl border border-slate-200 p-3 text-sm focus:border-merchant-primary focus:ring-merchant-primary"
+        ></textarea>
+        <div class="flex gap-3">
+          <button @click="cancelingExpense = null" class="flex-1 rounded-xl bg-slate-100 py-3 text-sm font-bold text-slate-600 hover:bg-slate-200">
+            Tutup
+          </button>
+          <AppButton
+            variant="primary"
+            class="flex-1 bg-rose-500 hover:bg-rose-600"
+            :loading="loadingCancel"
+            @click="submitCancel"
+          >
+            Ajukan Batal
+          </AppButton>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Pengajuan Edit -->
+    <div v-if="editingExpense" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="editingExpense = null"></div>
+      <div class="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <h3 class="mb-2 text-xl font-black text-amber-600">Pengajuan Edit Pengeluaran</h3>
+        <p class="mb-4 text-sm text-slate-500">
+          Pengeluaran <strong>{{ editingExpense?.category }}</strong>. Masukkan data perbaikan dan alasan edit.
+        </p>
+        
+        <div class="space-y-3 mb-4">
+          <div>
+            <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Harga Baru (Total)</label>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">Rp</span>
+              <input
+                v-model="editData.amount"
+                type="text"
+                class="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-4 text-sm font-medium focus:border-merchant-primary focus:outline-none"
+                placeholder="0"
+                @input="editData.amount = String(editData.amount).replace(/\D/g, '')"
+              />
+            </div>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Alasan Edit</label>
+            <textarea
+              v-model="editReason"
+              rows="2"
+              placeholder="Alasan edit..."
+              class="w-full rounded-xl border border-slate-200 p-3 text-sm focus:border-merchant-primary focus:ring-merchant-primary"
+            ></textarea>
+          </div>
+        </div>
+
+        <div class="flex gap-3">
+          <button @click="editingExpense = null" class="flex-1 rounded-xl bg-slate-100 py-3 text-sm font-bold text-slate-600 hover:bg-slate-200">
+            Tutup
+          </button>
+          <AppButton
+            variant="primary"
+            class="flex-1 bg-amber-500 hover:bg-amber-600"
+            :loading="loadingEdit"
+            @click="submitEdit"
+          >
+            Ajukan Edit
+          </AppButton>
+        </div>
+      </div>
     </div>
   </div>
 </template>

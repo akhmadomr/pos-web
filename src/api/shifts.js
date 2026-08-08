@@ -38,6 +38,16 @@ export const addExpense = async (payload) => {
   return data.data
 }
 
+export const requestEditExpense = async (id, payload) => {
+  const { data } = await client.put(`/pos/shifts/expenses/${id}/request-edit`, payload)
+  return data
+}
+
+export const requestCancelExpense = async (id, reason) => {
+  const { data } = await client.put(`/pos/shifts/expenses/${id}/request-cancel`, { reason })
+  return data
+}
+
 export async function fetchShiftAnalytics(shiftId) {
   const { data } = await client.get(`/pos/shifts/${shiftId}/analytics`)
   return data.data
