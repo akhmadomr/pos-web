@@ -24,3 +24,13 @@ export async function cancelOrder(id) {
   const { data } = await client.post(`/pos/orders/${id}/cancel`)
   return data.data
 }
+
+export async function requestEditOrder(id, payload) {
+  const { data } = await client.post(`/pos/orders/${id}/request-edit`, payload)
+  return data
+}
+
+export async function requestCancelOrder(id, reason) {
+  const { data } = await client.post(`/pos/orders/${id}/request-cancel`, { reason })
+  return data
+}

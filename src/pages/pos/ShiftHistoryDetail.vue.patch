@@ -1,0 +1,282 @@
+--- src/pages/pos/ShiftHistoryDetail.vue
++++ src/pages/pos/ShiftHistoryDetail.vue
+@@ -3,9 +3,14 @@
+ import { useRoute, useRouter } from 'vue-router'
+ import VueApexCharts from 'vue3-apexcharts'
+ import { fetchShiftAnalytics, fetchDailyShiftAnalytics, exportShiftDetailPdf, exportShiftDetailExcel } from '@/api/shifts'
++import { requestCancelExpense } from '@/api/shifts'
++import { requestCancelOrder } from '@/api/orders'
+ import { formatRupiah } from '@/utils/currency'
+ import dayjs from 'dayjs'
+ import 'dayjs/locale/id'
++import AppModal from '@/components/common/AppModal.vue'
++import RequestEditOrderModal from '@/components/order/RequestEditOrderModal.vue'
++import RequestEditExpenseModal from '@/components/shift/RequestEditExpenseModal.vue'
+ 
+ dayjs.locale('id')
+ 
+@@ -21,6 +26,18 @@
+ 
+ const isExportingPdf = ref(false)
+ const isExportingExcel = ref(false)
++
++// Modal state
++const cancelReason = ref('')
++const showCancelOrderModal = ref(false)
++const selectedOrder = ref(null)
++const showEditOrderModal = ref(false)
++
++const showCancelExpenseModal = ref(false)
++const selectedExpense = ref(null)
++const showEditExpenseModal = ref(false)
++
++const isSubmitting = ref(false)
+ 
+ const handleDownload = async (exportFn, type) => {
+   if (type === 'pdf') isExportingPdf.value = true
+@@ -95,6 +112,7 @@
+       isDaily: false,
+       shift: shiftAnalytics.value[tab].shift,
+       summary: {
++         cash_difference: shiftAnalytics.value[tab].shift.cash_difference,
+          total_transactions: shiftAnalytics.value[tab].shift.total_transactions,
+          total_revenue: shiftAnalytics.value[tab].shift.total_revenue,
+          system_cash: shiftAnalytics.value[tab].shift.system_cash,
+@@ -118,6 +136,89 @@
+   router.push({ name: 'pos-shift-history' })
+ }
+ 
++// Actions for Order
++const openEditOrder = (order) => {
++  selectedOrder.value = order
++  showEditOrderModal.value = true
++}
++
++const openCancelOrder = (order) => {
++  selectedOrder.value = order
++  cancelReason.value = ''
++  showCancelOrderModal.value = true
++}
++
++const submitCancelOrder = async () => {
++  if (!cancelReason.value) return alert('Alasan wajib diisi')
++  isSubmitting.value = true
++  try {
++    await requestCancelOrder(selectedOrder.value.id, cancelReason.value)
++    alert('Permintaan batal berhasil diajukan')
++    showCancelOrderModal.value = false
++    // reload shift data
++    shiftAnalytics.value[activeTab.value] = await fetchShiftAnalytics(activeTab.value)
++    selectTab(activeTab.value)
++  } catch (e) {
++    alert(e.response?.data?.message || 'Gagal mengajukan pembatalan')
++  } finally {
++    isSubmitting.value = false
++  }
++}
++
++const onOrderEditSubmitted = async () => {
++  showEditOrderModal.value = false
++  shiftAnalytics.value[activeTab.value] = await fetchShiftAnalytics(activeTab.value)
++  selectTab(activeTab.value)
++}
++
++// Actions for Expense
++const openEditExpense = (expense) => {
++  selectedExpense.value = expense
++  showEditExpenseModal.value = true
++}
++
++const openCancelExpense = (expense) => {
++  selectedExpense.value = expense
++  cancelReason.value = ''
++  showCancelExpenseModal.value = true
++}
++
++const submitCancelExpense = async () => {
++  if (!cancelReason.value) return alert('Alasan wajib diisi')
++  isSubmitting.value = true
++  try {
++    await requestCancelExpense(selectedExpense.value.id, cancelReason.value)
++    alert('Permintaan hapus pengeluaran berhasil diajukan')
++    showCancelExpenseModal.value = false
++    // reload
++    shiftAnalytics.value[activeTab.value] = await fetchShiftAnalytics(activeTab.value)
++    selectTab(activeTab.value)
++  } catch (e) {
++    alert(e.response?.data?.message || 'Gagal mengajukan penghapusan')
++  } finally {
++    isSubmitting.value = false
++  }
++}
++
++const onExpenseEditSubmitted = async () => {
++  showEditExpenseModal.value = false
++  shiftAnalytics.value[activeTab.value] = await fetchShiftAnalytics(activeTab.value)
++  selectTab(activeTab.value)
++}
++
++const getEditStatusBadge = (status) => {
++  if (status === 'pending') return { text: 'Menunggu (Edit)', class: 'bg-amber-100 text-amber-700' }
++  if (status === 'pending_cancel') return { text: 'Menunggu (Batal)', class: 'bg-amber-100 text-amber-700' }
++  return null
++}
++
++const getExpenseEditStatusBadge = (status) => {
++  if (status === 'pending_edit') return { text: 'Menunggu (Edit)', class: 'bg-amber-100 text-amber-700' }
++  if (status === 'pending_cancel') return { text: 'Menunggu (Hapus)', class: 'bg-amber-100 text-amber-700' }
++  return null
++}
++
+ // Analytics Helpers
+ const premiumColors = ["#194a7a", "#44a4b4", "#f4c46c", "#ff5e5e", "#10b981", "#f59e0b"]
+ 
+@@ -410,13 +511,27 @@
+             <i class="pi pi-money-bill text-rose-500" /> Daftar Pengeluaran
+           </h2>
+           <div v-if="currentView.data.expenses.length" class="space-y-3">
+             <div v-for="exp in currentView.data.expenses" :key="exp.id" class="flex flex-col rounded-xl border border-slate-100 bg-slate-50 p-4">
+               <div class="flex items-center justify-between mb-2">
+-                <span class="text-sm font-bold text-slate-700">{{ exp.category }}</span>
++                <div class="flex items-center gap-2">
++                  <span class="text-sm font-bold text-slate-700">{{ exp.category }}</span>
++                  <span v-if="exp.edit_status" :class="getExpenseEditStatusBadge(exp.edit_status).class" class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">
++                    {{ getExpenseEditStatusBadge(exp.edit_status).text }}
++                  </span>
++                </div>
+                 <span class="rounded-lg bg-white px-3 py-1 text-sm font-black text-rose-600 shadow-sm border border-slate-100">{{ formatRupiah(exp.amount) }}</span>
+               </div>
+               <p class="text-xs font-semibold text-slate-500">{{ exp.qty }} x {{ formatRupiah(exp.price_per_item) }}</p>
++              
++              <div v-if="!currentView.isDaily && exp.edit_status !== 'pending_edit' && exp.edit_status !== 'pending_cancel'" class="mt-3 flex gap-2 justify-end border-t border-slate-200 pt-3">
++                <button @click="openEditExpense(exp)" class="text-xs font-bold text-merchant-primary hover:text-merchant-secondary px-2 py-1 rounded bg-merchant-primary/5 hover:bg-merchant-primary/10 transition">
++                  Edit
++                </button>
++                <button @click="openCancelExpense(exp)" class="text-xs font-bold text-rose-500 hover:text-rose-700 px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 transition">
++                  Hapus
++                </button>
++              </div>
+             </div>
+           </div>
+           <div v-else class="flex flex-col items-center justify-center py-8">
+@@ -447,6 +562,7 @@
+                   <th class="p-3">Tipe</th>
+                   <th class="p-3">Item</th>
+                   <th class="p-3">Status</th>
++                  <th v-if="!currentView.isDaily" class="p-3 text-center">Aksi</th>
+                   <th class="p-3 text-right">Total (Rp)</th>
+                 </tr>
+               </thead>
+@@ -460,11 +576,27 @@
+                   <td class="p-3 text-slate-600">{{ order.items_count }} Item</td>
+                   <td class="p-3">
+-                    <span class="rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-wider"
+-                          :class="order.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 
+-                                 (order.status === 'cancelled' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700')">
+-                      {{ order.status === 'completed' ? 'Selesai' : (order.status === 'cancelled' ? 'Batal' : 'Proses') }}
+-                    </span>
++                    <div class="flex flex-col gap-1 items-start">
++                      <span class="rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-wider"
++                            :class="order.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 
++                                   (order.status === 'cancelled' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700')">
++                        {{ order.status === 'completed' ? 'Selesai' : (order.status === 'cancelled' ? 'Batal' : 'Proses') }}
++                      </span>
++                      <span v-if="order.edit_status" :class="getEditStatusBadge(order.edit_status).class" class="rounded-lg px-2 py-1 text-[9px] font-black uppercase tracking-wider">
++                        {{ getEditStatusBadge(order.edit_status).text }}
++                      </span>
++                    </div>
++                  </td>
++                  <td v-if="!currentView.isDaily" class="p-3">
++                    <div class="flex justify-center gap-2" v-if="order.status === 'completed' && order.edit_status !== 'pending' && order.edit_status !== 'pending_cancel'">
++                      <button @click="openEditOrder(order)" class="h-7 w-7 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 flex items-center justify-center transition" title="Edit Pesanan">
++                        <i class="pi pi-pencil text-xs"></i>
++                      </button>
++                      <button @click="openCancelOrder(order)" class="h-7 w-7 rounded bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center justify-center transition" title="Batalkan Pesanan">
++                        <i class="pi pi-times text-xs"></i>
++                      </button>
++                    </div>
+                   </td>
+                   <td class="p-3 text-right font-bold text-slate-900">{{ formatRupiah(order.total_amount) }}</td>
+                 </tr>
+@@ -478,11 +610,23 @@
+                   <span class="font-bold text-slate-900 text-sm">{{ order.order_number }}</span>
+                   <p class="text-[10px] text-slate-500 mt-0.5">{{ dayjs(order.created_at).format('DD MMM, HH:mm') }}</p>
+                 </div>
+-                <span class="rounded-lg px-2 py-0.5 text-[9px] font-black uppercase tracking-wider"
+-                      :class="order.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : (order.status === 'cancelled' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700')">
+-                  {{ order.status === 'completed' ? 'Selesai' : (order.status === 'cancelled' ? 'Batal' : 'Proses') }}
+-                </span>
++                <div class="flex flex-col gap-1 items-end">
++                  <span class="rounded-lg px-2 py-0.5 text-[9px] font-black uppercase tracking-wider"
++                        :class="order.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : (order.status === 'cancelled' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700')">
++                    {{ order.status === 'completed' ? 'Selesai' : (order.status === 'cancelled' ? 'Batal' : 'Proses') }}
++                  </span>
++                  <span v-if="order.edit_status" :class="getEditStatusBadge(order.edit_status).class" class="rounded-lg px-2 py-0.5 text-[8px] font-black uppercase tracking-wider">
++                    {{ getEditStatusBadge(order.edit_status).text }}
++                  </span>
++                </div>
+               </div>
++              <div v-if="!currentView.isDaily && order.status === 'completed' && order.edit_status !== 'pending' && order.edit_status !== 'pending_cancel'" class="flex justify-end gap-2 mb-2">
++                <button @click="openEditOrder(order)" class="text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition">Edit</button>
++                <button @click="openCancelOrder(order)" class="text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded transition">Batal</button>
++              </div>
+               <div class="flex justify-between items-end border-t border-slate-50 pt-2 mt-1">
+                 <div>
+                   <p class="text-[10px] text-slate-600 font-semibold">{{ order.order_type === 'dine_in' ? `Dine In (Meja ${order.table_number || '-'})` : 'Take Away' }}</p>
+@@ -497,6 +641,61 @@
+       </div>
+     </template>
++
++    <!-- Modals -->
++    <RequestEditOrderModal 
++      v-if="showEditOrderModal"
++      :order-id="selectedOrder.id"
++      @close="showEditOrderModal = false"
++      @submitted="onOrderEditSubmitted"
++    />
++
++    <RequestEditExpenseModal
++      v-if="showEditExpenseModal"
++      :expense="selectedExpense"
++      @close="showEditExpenseModal = false"
++      @submitted="onExpenseEditSubmitted"
++    />
++
++    <AppModal v-model="showCancelOrderModal" title="Pengajuan Batal Pesanan">
++      <div class="p-4 md:p-6 space-y-4">
++        <div class="rounded-lg bg-amber-50 p-4 border border-amber-200">
++          <p class="text-sm text-amber-800">Anda akan mengajukan pembatalan pesanan <strong>{{ selectedOrder?.order_number }}</strong>. Admin perlu menyetujui permintaan ini sebelum stok dikembalikan.</p>
++        </div>
++        <div class="space-y-1.5">
++          <label class="text-xs font-bold text-slate-700 uppercase">Alasan Pembatalan <span class="text-rose-500">*</span></label>
++          <textarea v-model="cancelReason" rows="3" class="w-full rounded-xl border border-slate-200 p-3 text-sm focus:border-merchant-primary focus:ring-1 focus:ring-merchant-primary outline-none transition" placeholder="Contoh: Kesalahan input item"></textarea>
++        </div>
++        <div class="flex gap-3 pt-2 border-t border-slate-100">
++          <button @click="showCancelOrderModal = false" class="flex-1 rounded-xl bg-slate-100 py-3 text-sm font-bold text-slate-600 hover:bg-slate-200 transition">Kembali</button>
++          <button @click="submitCancelOrder" :disabled="!cancelReason || isSubmitting" class="flex-1 rounded-xl bg-rose-600 py-3 text-sm font-bold text-white hover:bg-rose-700 transition disabled:opacity-50 flex items-center justify-center">
++            <i v-if="isSubmitting" class="pi pi-spin pi-spinner mr-2"></i> Ajukan Pembatalan
++          </button>
++        </div>
++      </div>
++    </AppModal>
++
++    <AppModal v-model="showCancelExpenseModal" title="Pengajuan Hapus Pengeluaran">
++      <div class="p-4 md:p-6 space-y-4">
++        <div class="rounded-lg bg-amber-50 p-4 border border-amber-200">
++          <p class="text-sm text-amber-800">Anda akan mengajukan penghapusan pengeluaran <strong>{{ selectedExpense?.category }}</strong> sejumlah <strong>{{ formatRupiah(selectedExpense?.amount) }}</strong>. Admin perlu menyetujui permintaan ini.</p>
++        </div>
++        <div class="space-y-1.5">
++          <label class="text-xs font-bold text-slate-700 uppercase">Alasan Penghapusan <span class="text-rose-500">*</span></label>
++          <textarea v-model="cancelReason" rows="3" class="w-full rounded-xl border border-slate-200 p-3 text-sm focus:border-merchant-primary focus:ring-1 focus:ring-merchant-primary outline-none transition" placeholder="Contoh: Salah catat jumlah"></textarea>
++        </div>
++        <div class="flex gap-3 pt-2 border-t border-slate-100">
++          <button @click="showCancelExpenseModal = false" class="flex-1 rounded-xl bg-slate-100 py-3 text-sm font-bold text-slate-600 hover:bg-slate-200 transition">Kembali</button>
++          <button @click="submitCancelExpense" :disabled="!cancelReason || isSubmitting" class="flex-1 rounded-xl bg-rose-600 py-3 text-sm font-bold text-white hover:bg-rose-700 transition disabled:opacity-50 flex items-center justify-center">
++            <i v-if="isSubmitting" class="pi pi-spin pi-spinner mr-2"></i> Ajukan Penghapusan
++          </button>
++        </div>
++      </div>
++    </AppModal>
++
+   </div>
+ </template>

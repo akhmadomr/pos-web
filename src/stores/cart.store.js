@@ -38,6 +38,8 @@ function persistCart(state) {
       editingOrderId: state.editingOrderId,
       editingOrderReason: state.editingOrderReason,
       editingOriginalOrder: state.editingOriginalOrder,
+      discountType: state.discountType,
+      discountValue: state.discountValue,
     }),
   )
 }
@@ -59,6 +61,9 @@ export const useCartStore = defineStore('cart', () => {
   const editingOrderReason = ref(saved?.editingOrderReason ?? '')
   const editingOriginalOrder = ref(saved?.editingOriginalOrder ?? null)
 
+  const discountType = ref(saved?.discountType ?? null)
+  const discountValue = ref(saved?.discountValue ?? null)
+
   const subtotal = computed(() =>
     items.value.reduce(
       (sum, item) => sum + (Number(String(item.unit_price || 0).replace(/[^\d.-]/g, '')) + Number(String(item.addons_price || 0).replace(/[^\d.-]/g, ''))) * (item.quantity || 1),
@@ -67,19 +72,37 @@ export const useCartStore = defineStore('cart', () => {
   )
 
   const discountAmount = computed(() => {
-    const voucher = voucherData.value
-    if (!voucher || subtotal.value <= 0) return 0
-
-    if (voucher.type === 'percentage') {
-      const raw = subtotal.value * (Number(voucher.value) / 100)
-      const max = voucher.max_discount != null ? Number(voucher.max_discount) : raw
-      return Math.min(raw, max)
+    let amount = 0
+    
+    // Calculate manual discount
+    if (discountType.value && discountValue.value > 0) {
+      if (discountType.value === 'percentage') {
+        amount += subtotal.value * (Number(discountValue.value) / 100)
+      } else {
+        amount += subtotal.value === 0 ? Number(discountValue.value) : Math.min(Number(discountValue.value), subtotal.value)
+      }
     }
 
-    return Math.min(Number(voucher.value ?? 0), subtotal.value)
+    // Calculate voucher discount
+    const voucher = voucherData.value
+    if (voucher && subtotal.value > 0) {
+      if (voucher.type === 'percentage') {
+        const raw = subtotal.value * (Number(voucher.value) / 100)
+        const max = voucher.max_discount != null ? Number(voucher.max_discount) : raw
+        amount += Math.min(raw, max)
+      } else {
+        amount += Math.min(Number(voucher.value ?? 0), subtotal.value)
+      }
+    }
+    
+    return amount
   })
 
-  const discountLabel = computed(() => voucherData.value?.name ?? null)
+  const discountLabel = computed(() => {
+    if (voucherData.value?.name) return voucherData.value.name
+    if (discountType.value) return discountType.value === 'percentage' ? `Diskon (${discountValue.value}%)` : 'Diskon Manual'
+    return null
+  })
 
   const taxableAmount = computed(() => Math.max(0, subtotal.value - discountAmount.value))
 
@@ -114,6 +137,31 @@ export const useCartStore = defineStore('cart', () => {
         editingOrderId: editingOrderId.value,
         editingOrderReason: editingOrderReason.value,
         editingOriginalOrder: editingOriginalOrder.value,
+        discountType: discountType.value,
+        discountValue: discountValue.value,
+      })
+    },
+    { deep: true },
+  )
+
+  watch(
+    [discountType, discountValue],
+    () => {
+      persistCart({
+        items: items.value,
+        orderType: orderType.value,
+        tableId: tableId.value,
+        customerId: customerId.value,
+        customer: customer.value,
+        customerName: customerName.value,
+        voucherCode: voucherCode.value,
+        voucherData: voucherData.value,
+        isEditingOrder: isEditingOrder.value,
+        editingOrderId: editingOrderId.value,
+        editingOrderReason: editingOrderReason.value,
+        editingOriginalOrder: editingOriginalOrder.value,
+        discountType: discountType.value,
+        discountValue: discountValue.value,
       })
     },
     { deep: true },
@@ -184,6 +232,8 @@ export const useCartStore = defineStore('cart', () => {
     editingOrderId.value = null
     editingOrderReason.value = ''
     editingOriginalOrder.value = null
+    discountType.value = null
+    discountValue.value = null
   }
 
   function setOrderType(type) {
@@ -232,6 +282,8 @@ export const useCartStore = defineStore('cart', () => {
       customer_id: customerId.value,
       customer_name: customerName.value?.trim() || null,
       voucher_code: voucherCode.value,
+      discount_type: discountType.value,
+      discount_value: discountType.value ? discountValue.value : null,
       items: items.value.map((item) => ({
         product_id: item.product_id,
         product_name: item.product_name,
@@ -299,6 +351,11 @@ export const useCartStore = defineStore('cart', () => {
         value: order.discount_amount
       }
     }
+
+    if (order.discount_type) {
+      discountType.value = order.discount_type
+      discountValue.value = order.discount_value
+    }
   }
 
   return {
@@ -333,5 +390,7 @@ export const useCartStore = defineStore('cart', () => {
     editingOrderId,
     editingOrderReason,
     editingOriginalOrder,
+    discountType,
+    discountValue,
   }
 })

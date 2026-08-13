@@ -202,6 +202,41 @@ const submitCancelRequest = async () => {
     isSubmittingCancel.value = false
   }
 }
+
+const search = ref('')
+const statusFilter = ref('')
+const tipeFilter = ref('')
+const metodeFilter = ref('')
+const sortBy = ref('time_desc')
+const showFilters = ref(false)
+
+const filteredOrders = computed(() => {
+  let list = orderStore.orders.filter(o => ['completed', 'cancelled'].includes(o.status))
+  
+  if (search.value) {
+    const q = search.value.toLowerCase()
+    list = list.filter(o => o.order_number.toLowerCase().includes(q) || (o.customer_name || '').toLowerCase().includes(q))
+  }
+  if (statusFilter.value) {
+    list = list.filter(o => o.status === statusFilter.value)
+  }
+  if (tipeFilter.value) {
+    list = list.filter(o => o.order_type === tipeFilter.value)
+  }
+  if (metodeFilter.value) {
+    list = list.filter(o => o.payment_method === metodeFilter.value)
+  }
+  
+  list.sort((a, b) => {
+    if (sortBy.value === 'time_desc') return new Date(b.created_at) - new Date(a.created_at)
+    if (sortBy.value === 'time_asc') return new Date(a.created_at) - new Date(b.created_at)
+    if (sortBy.value === 'total_desc') return Number(b.total_amount) - Number(a.total_amount)
+    if (sortBy.value === 'total_asc') return Number(a.total_amount) - Number(b.total_amount)
+    return 0
+  })
+  
+  return list
+})
 </script>
 
 <template>
@@ -221,6 +256,53 @@ const submitCancelRequest = async () => {
       </button>
     </header>
 
+    <!-- Filters Section -->
+    <div class="flex flex-col gap-3">
+      <div class="flex gap-2">
+        <div class="relative flex-1">
+          <i class="pi pi-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+          <input
+            v-model="search"
+            type="text"
+            placeholder="Cari no. order atau pelanggan..."
+            class="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-4 text-sm focus:border-merchant-primary focus:outline-none focus:ring-1 focus:ring-merchant-primary"
+          />
+        </div>
+        <button
+          @click="showFilters = !showFilters"
+          class="flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
+          :class="{ 'bg-slate-100': showFilters }"
+        >
+          <i class="pi pi-filter" />
+          <span class="hidden sm:inline">Filter</span>
+        </button>
+      </div>
+
+      <div v-show="showFilters" class="grid grid-cols-2 gap-3 sm:grid-cols-4 bg-white p-3 md:p-4 rounded-xl border border-slate-100 shadow-sm">
+        <select v-model="sortBy" class="rounded-xl border border-slate-200 px-3 py-2 text-xs md:text-sm focus:border-merchant-primary focus:outline-none">
+          <option value="time_desc">Terbaru</option>
+          <option value="time_asc">Terlama</option>
+          <option value="total_desc">Total Tertinggi</option>
+          <option value="total_asc">Total Terendah</option>
+        </select>
+        <select v-model="statusFilter" class="rounded-xl border border-slate-200 px-3 py-2 text-xs md:text-sm focus:border-merchant-primary focus:outline-none">
+          <option value="">Semua Status</option>
+          <option value="completed">Selesai</option>
+          <option value="cancelled">Batal</option>
+        </select>
+        <select v-model="tipeFilter" class="rounded-xl border border-slate-200 px-3 py-2 text-xs md:text-sm focus:border-merchant-primary focus:outline-none">
+          <option value="">Semua Tipe</option>
+          <option value="dine_in">Dine In</option>
+          <option value="take_away">Take Away</option>
+        </select>
+        <select v-model="metodeFilter" class="rounded-xl border border-slate-200 px-3 py-2 text-xs md:text-sm focus:border-merchant-primary focus:outline-none">
+          <option value="">Semua Metode</option>
+          <option value="cash">Tunai</option>
+          <option value="qris">QRIS</option>
+        </select>
+      </div>
+    </div>
+
     <AppAlert
       v-if="orderStore.error"
       type="error"
@@ -234,17 +316,17 @@ const submitCancelRequest = async () => {
     </div>
 
     <!-- Wait, orderStore.completedOrders is used here, but we should include cancelled as well. Let's create a computed property. -->
-    <div v-else-if="!orderStore.orders.filter(o => ['completed', 'cancelled'].includes(o.status)).length" class="glass-card flex flex-col items-center p-12 text-center">
+    <div v-else-if="!filteredOrders.length" class="glass-card flex flex-col items-center p-12 text-center">
       <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-slate-400">
         <i class="pi pi-history text-2xl" />
       </div>
       <h3 class="text-lg font-bold text-slate-900">Belum Ada Riwayat Pesanan</h3>
-      <p class="text-slate-500">Pesanan yang telah selesai akan muncul di sini.</p>
+      <p class="text-slate-500">Pesanan yang sesuai dengan filter akan muncul di sini.</p>
     </div>
 
     <div v-else class="grid gap-4 lg:grid-cols-2">
       <div
-        v-for="order in orderStore.orders.filter(o => ['completed', 'cancelled'].includes(o.status))"
+        v-for="order in filteredOrders"
         :key="order.id"
         class="glass-card flex flex-col overflow-hidden"
       >

@@ -46,6 +46,29 @@ const isValid = computed(() => {
   return form.value.category && form.value.qty > 0 && amountPreview.value > 0
 })
 
+const filterSearch = ref('')
+const sortBy = ref('time_desc')
+const showFilters = ref(false)
+
+const filteredExpenses = computed(() => {
+  let list = [...expenses.value]
+  
+  if (filterSearch.value) {
+    const q = filterSearch.value.toLowerCase()
+    list = list.filter(e => e.category.toLowerCase().includes(q))
+  }
+  
+  list.sort((a, b) => {
+    if (sortBy.value === 'time_desc') return new Date(b.created_at) - new Date(a.created_at)
+    if (sortBy.value === 'time_asc') return new Date(a.created_at) - new Date(b.created_at)
+    if (sortBy.value === 'amount_desc') return Number(b.amount) - Number(a.amount)
+    if (sortBy.value === 'amount_asc') return Number(a.amount) - Number(b.amount)
+    return 0
+  })
+  
+  return list
+})
+
 const loadData = async () => {
   loading.value = true
   error.value = ''
@@ -325,14 +348,45 @@ onMounted(() => {
             <h3 class="text-[10px] md:text-sm font-bold uppercase tracking-wider text-slate-400">Riwayat Pengeluaran</h3>
             <span class="text-xs md:text-sm font-bold text-slate-900">Total: {{ formatRupiah(totalExpenses) }}</span>
           </div>
+
+          <div class="border-b border-slate-100 p-3 flex flex-col gap-3 bg-white">
+            <div class="flex gap-2">
+              <div class="relative flex-1">
+                <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                <input
+                  v-model="filterSearch"
+                  type="text"
+                  placeholder="Cari pengeluaran..."
+                  class="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-xs focus:border-merchant-primary focus:outline-none focus:ring-1 focus:ring-merchant-primary"
+                />
+              </div>
+              <button
+                @click="showFilters = !showFilters"
+                class="flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
+                :class="{ 'bg-slate-100': showFilters }"
+              >
+                <i class="pi pi-filter" />
+                <span class="hidden sm:inline">Filter</span>
+              </button>
+            </div>
+            
+            <div v-show="showFilters" class="flex flex-wrap gap-2">
+              <select v-model="sortBy" class="rounded-xl border border-slate-200 px-3 py-1.5 text-xs focus:border-merchant-primary focus:outline-none flex-1 min-w-[120px]">
+                <option value="time_desc">Terbaru</option>
+                <option value="time_asc">Terlama</option>
+                <option value="amount_desc">Harga Tertinggi</option>
+                <option value="amount_asc">Harga Terendah</option>
+              </select>
+            </div>
+          </div>
           
           <div class="flex-1 overflow-y-auto p-3 md:p-4 relative">
             <div v-if="loading" class="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
               <i class="pi pi-spin pi-spinner text-2xl md:text-3xl text-merchant-primary" />
             </div>
             
-            <div v-if="expenses.length" class="space-y-2 md:space-y-3">
-              <div v-for="exp in expenses" :key="exp.id" class="flex items-center justify-between rounded-xl border border-slate-100 p-3 md:p-4 hover:bg-slate-50 transition">
+            <div v-if="filteredExpenses.length" class="space-y-2 md:space-y-3">
+              <div v-for="exp in filteredExpenses" :key="exp.id" class="flex items-center justify-between rounded-xl border border-slate-100 p-3 md:p-4 hover:bg-slate-50 transition">
                 <div class="flex flex-col gap-0.5 md:gap-1">
                   <span class="text-sm md:text-base font-bold text-slate-900">{{ exp.category }}</span>
                   <div class="flex items-center gap-1.5 md:gap-2 text-[10px] md:text-xs text-slate-500">
@@ -360,7 +414,7 @@ onMounted(() => {
             
             <div v-else-if="!loading" class="flex h-full flex-col items-center justify-center text-slate-400 p-8 text-center">
               <i class="pi pi-inbox text-4xl mb-3 opacity-20" />
-              <p class="font-medium">Belum ada pengeluaran di shift ini.</p>
+              <p class="font-medium">Tidak ada pengeluaran yang sesuai.</p>
             </div>
           </div>
         </div>
