@@ -307,6 +307,36 @@ const handleConfirm = async () => {
                   <i class="pi pi-exclamation-circle mr-1" />Nama pelanggan wajib diisi sebelum melanjutkan.
                 </p>
               </div>
+
+              <!-- Diskon Section -->
+              <div class="pt-4 border-t border-slate-100">
+                <label class="block text-xs font-bold uppercase text-slate-400 mb-3">Diskon Manual (Opsional)</label>
+                <div class="grid grid-cols-2 gap-1 mb-3 rounded-xl bg-slate-100 p-1 text-sm font-bold">
+                  <button type="button" @click="cartStore.discountType = 'nominal'" class="rounded-lg py-2 transition flex items-center justify-center gap-1.5" :class="cartStore.discountType === 'nominal' ? 'bg-white text-merchant-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'">Nominal (Rp)</button>
+                  <button type="button" @click="cartStore.discountType = 'percentage'" class="rounded-lg py-2 transition flex items-center justify-center gap-1.5" :class="cartStore.discountType === 'percentage' ? 'bg-white text-merchant-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'">Persentase (%)</button>
+                </div>
+                
+                <div v-if="cartStore.discountType" class="relative">
+                  <span v-if="cartStore.discountType === 'nominal'" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">Rp</span>
+                  <span v-if="cartStore.discountType === 'percentage'" class="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">%</span>
+                  <input
+                    v-model.number="cartStore.discountValue"
+                    type="number"
+                    :placeholder="cartStore.discountType === 'nominal' ? '0' : '0'"
+                    min="0"
+                    :max="cartStore.discountType === 'percentage' ? 100 : undefined"
+                    class="w-full rounded-xl border border-slate-200 py-3 font-semibold focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
+                    :class="cartStore.discountType === 'nominal' ? 'pl-11 pr-4' : 'pl-4 pr-11'"
+                    @keyup.enter="tryNextStep"
+                  />
+                </div>
+                <div v-if="cartStore.discountType" class="mt-2 flex justify-between items-center">
+                  <p class="text-xs text-slate-500">
+                    Potongan: <span class="font-bold text-slate-700">{{ formatRupiah(cartStore.discountAmount) }}</span>
+                  </p>
+                  <button type="button" @click="cartStore.discountType = null; cartStore.discountValue = null" class="text-xs text-rose-500 hover:text-rose-600 font-bold">Hapus Diskon</button>
+                </div>
+              </div>
             </div>
 
             <!-- Step 2: Summary + pilih metode bayar -->
