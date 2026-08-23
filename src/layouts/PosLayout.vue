@@ -6,6 +6,8 @@ import AppButton from '@/components/common/AppButton.vue'
 import CloseShiftModal from '@/components/shift/CloseShiftModal.vue'
 import ShiftSummary from '@/components/shift/ShiftSummary.vue'
 import ProfileModal from '@/components/profile/ProfileModal.vue'
+import LowStockBanner from '@/components/layout/LowStockBanner.vue'
+import NotificationBell from '@/components/layout/NotificationBell.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { usePrinter } from '@/composables/usePrinter'
 import { useSettingsStore } from '@/stores/settings.store'
@@ -248,6 +250,8 @@ onUnmounted(() => {
               </div>
             </div>
 
+            <NotificationBell />
+
             <div class="hidden text-right lg:block">
               <p class="font-mono text-xl font-black leading-none tabular-nums text-slate-900">{{ clockLabel }}</p>
               <p class="mt-1 text-xs capitalize text-slate-500">{{ dateLabel }}</p>
@@ -318,6 +322,9 @@ onUnmounted(() => {
           </button>
         </div>
       </div>
+      
+      <!-- Low Stock Banner -->
+      <LowStockBanner v-if="authStore.hasActiveShift" />
 
       <main class="flex-1 flex flex-col min-h-0 p-2 sm:p-4 lg:p-6 overflow-y-auto">
         <router-view />
