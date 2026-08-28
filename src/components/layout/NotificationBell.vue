@@ -2,7 +2,8 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
-import client from '@/api/client'
+import { useNotificationStore } from '@/stores/notification.store'
+import NotificationDetailModal from './NotificationDetailModal.vue'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import 'dayjs/locale/id'
@@ -12,56 +13,34 @@ dayjs.locale('id')
 
 const router = useRouter()
 const authStore = useAuthStore()
-const notifications = ref([])
-const unreadCount = ref(0)
-const isOpen = ref(false)
-let pollInterval = null
+const notifStore = useNotificationStore()
 
-const fetchNotifications = async () => {
-  if (!authStore.isAuthenticated) return
-  try {
-    const res = await client.get('/notifications')
-    if (res.data?.success) {
-      notifications.value = res.data.data
-      unreadCount.value = res.data.unread_count
-    }
-  } catch (error) {
-    console.error('Failed to fetch notifications', error)
-  }
-}
+const isOpen = ref(false)
+const selectedNotification = ref(null)
+const showDetailModal = ref(false)
+let pollInterval = null
 
 const toggleBell = () => {
   isOpen.value = !isOpen.value
-  if (isOpen.value && notifications.value.length === 0) {
-    fetchNotifications()
-  }
-}
-
-const markAsRead = async (id) => {
-  try {
-    await client.post(`/notifications/${id}/read`)
-    fetchNotifications()
-  } catch (error) {
-    console.error(error)
-  }
-}
-
-const markAllAsRead = async () => {
-  try {
-    await client.post('/notifications/read-all')
-    fetchNotifications()
-  } catch (error) {
-    console.error(error)
+  if (isOpen.value && notifStore.notifications.length === 0) {
+    notifStore.fetchNotifications()
   }
 }
 
 const handleAction = async (notif) => {
   if (!notif.read_at) {
-    await markAsRead(notif.id)
+    await notifStore.markAsRead(notif.id)
   }
-  isOpen.value = false
-  if (notif.action_url) {
+  
+  // Jika memiliki URL relevan untuk POS, redirect.
+  // URL relevan adalah yang berawalan '/pos/'
+  if (notif.action_url && notif.action_url.startsWith('/pos/')) {
+    isOpen.value = false
     router.push(notif.action_url)
+  } else {
+    // Tampilkan modal
+    selectedNotification.value = notif
+    showDetailModal.value = true
   }
 }
 
@@ -84,8 +63,12 @@ const getTypeIcon = (type) => {
 }
 
 onMounted(() => {
-  fetchNotifications()
-  pollInterval = setInterval(fetchNotifications, 30000)
+  if (!notifStore.notifications.length) {
+    notifStore.fetchNotifications()
+  }
+  pollInterval = setInterval(() => {
+    notifStore.fetchNotifications()
+  }, 30000)
   
   // Close on outside click
   document.addEventListener('click', (e) => {
@@ -108,7 +91,7 @@ onUnmounted(() => {
     >
       <i class="pi pi-bell text-lg" />
       <span 
-        v-if="unreadCount > 0"
+        v-if="notifStore.unreadCount > 0"
         class="absolute right-2 top-2 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-rose-500 ring-2 ring-white"
       />
     </button>
@@ -121,22 +104,22 @@ onUnmounted(() => {
       <div class="flex items-center justify-between border-b border-slate-100 bg-slate-50/50 p-4">
         <h3 class="font-bold text-slate-800">Notifikasi</h3>
         <button 
-          v-if="unreadCount > 0"
-          @click="markAllAsRead"
-          class="text-xs font-semibold text-merchant-primary hover:text-merchant-secondary"
+          v-if="notifStore.unreadCount > 0"
+          @click="notifStore.markAllAsRead()"
+          class="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-bold text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-merchant-primary"
         >
-          Tandai Semua Dibaca
+          <i class="pi pi-check-circle" /> Tandai Semua Dibaca
         </button>
       </div>
 
       <div class="max-h-[400px] overflow-y-auto">
-        <div v-if="notifications.length === 0" class="p-8 text-center text-sm text-slate-400">
+        <div v-if="notifStore.notifications.length === 0" class="p-8 text-center text-sm text-slate-400">
           Belum ada notifikasi
         </div>
 
         <template v-else>
           <div 
-            v-for="notif in notifications" 
+            v-for="notif in notifStore.notifications.slice(0, 3)" 
             :key="notif.id"
             @click="handleAction(notif)"
             class="group flex cursor-pointer gap-3 border-b border-slate-50 p-4 transition-colors hover:bg-slate-50 relative"
@@ -150,21 +133,32 @@ onUnmounted(() => {
             </div>
             
             <div class="flex-1 min-w-0">
-              <p class="text-sm font-semibold text-slate-900" :class="{ 'text-slate-600': notif.read_at }">
+              <p class="text-[11px] font-bold text-slate-900" :class="{ 'text-slate-600': notif.read_at }">
                 {{ notif.title }}
               </p>
-              <p class="mt-0.5 text-xs text-slate-500 line-clamp-2">
+              <p class="mt-0.5 text-[9px] text-slate-500 line-clamp-2">
                 {{ notif.message }}
               </p>
-              <p class="mt-1.5 text-[10px] font-medium text-slate-400">
+              <p class="mt-1 text-[8px] font-medium text-slate-400">
                 {{ dayjs(notif.created_at).fromNow() }}
               </p>
             </div>
             
             <div v-if="!notif.read_at" class="absolute right-4 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-merchant-primary" />
           </div>
+          <div class="border-t border-slate-100 bg-slate-50/50 p-3 text-center">
+            <router-link to="/pos/notifications" @click="isOpen = false" class="text-sm font-bold text-merchant-primary hover:text-merchant-secondary transition">
+              Lihat Semua Notifikasi
+            </router-link>
+          </div>
         </template>
       </div>
     </div>
+
+    <NotificationDetailModal 
+      :show="showDetailModal" 
+      :notification="selectedNotification" 
+      @close="showDetailModal = false" 
+    />
   </div>
 </template>

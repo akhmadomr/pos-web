@@ -43,8 +43,13 @@ export const requestEditExpense = async (id, payload) => {
   return data
 }
 
-export const requestCancelExpense = async (id, reason) => {
+export async function requestCancelExpense(id, reason) {
   const { data } = await client.put(`/pos/shifts/expenses/${id}/request-cancel`, { reason })
+  return data
+}
+
+export async function requestAddExpense(shiftId, payload) {
+  const { data } = await client.post(`/pos/shifts/${shiftId}/expenses/request-add`, payload)
   return data
 }
 

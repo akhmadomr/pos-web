@@ -56,6 +56,11 @@ const routes = [
         name: 'pos-shift-history-detail',
         component: () => import('@/pages/pos/ShiftHistoryDetail.vue'),
       },
+      {
+        path: 'pos/notifications',
+        name: 'pos-notifications',
+        component: () => import('@/pages/pos/Notifications.vue'),
+      },
     ],
   },
 ]

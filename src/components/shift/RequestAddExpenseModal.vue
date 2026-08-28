@@ -2,20 +2,20 @@
 import { ref, onMounted } from 'vue'
 import AppModal from '@/components/common/AppModal.vue'
 import AppCreatableSelect from '@/components/common/AppCreatableSelect.vue'
-import { requestEditExpense, fetchExpenseCategories } from '@/api/shifts'
+import { requestAddExpense, fetchExpenseCategories } from '@/api/shifts'
 import { formatRupiah } from '@/utils/currency'
 
 const props = defineProps({
-  expense: { type: Object, required: true }
+  shiftId: { type: [String, Number], required: true }
 })
 const emit = defineEmits(['close', 'submitted'])
 
 const submitting = ref(false)
 const reason = ref('')
 const form = ref({
-  category: props.expense.category,
-  qty: props.expense.qty,
-  amount: props.expense.amount
+  category: '',
+  qty: 1,
+  amount: ''
 })
 
 const categories = ref([])
@@ -24,9 +24,6 @@ onMounted(async () => {
   try {
     const data = await fetchExpenseCategories()
     categories.value = data.map(c => ({ label: c, value: c }))
-    if (!categories.value.find(c => c.value === props.expense.category)) {
-      categories.value.push({ label: props.expense.category, value: props.expense.category })
-    }
   } catch(e) {}
 })
 
@@ -52,8 +49,8 @@ const submit = async () => {
 
   submitting.value = true
   try {
-    await requestEditExpense(props.expense.id, { reason: reason.value, edit_payload: payload })
-    alert('Permintaan edit pengeluaran berhasil diajukan')
+    await requestAddExpense(props.shiftId, { reason: reason.value, ...payload })
+    alert('Permintaan tambah pengeluaran berhasil diajukan')
     emit('submitted')
   } catch(e) {
     alert(e.response?.data?.message || 'Gagal mengajukan edit')
@@ -64,15 +61,15 @@ const submit = async () => {
 </script>
 
 <template>
-  <AppModal :show="true" title="Pengajuan Edit Pengeluaran" size="md" @close="$emit('close')">
+  <AppModal :show="true" title="Pengajuan Tambah Pengeluaran" size="md" @close="$emit('close')">
     <div class="p-4 md:p-6 space-y-4">
       <div class="rounded-lg bg-amber-50 p-4 border border-amber-200">
-        <p class="text-sm text-amber-800">Anda mengajukan perubahan data pengeluaran shift ini. Admin perlu menyetujui perubahan ini.</p>
+        <p class="text-sm text-amber-800">Anda mengajukan penambahan pengeluaran pada shift ini. Admin perlu menyetujui penambahan ini.</p>
       </div>
 
       <div class="space-y-1.5">
-        <label class="text-xs font-bold text-slate-700 uppercase">Alasan Edit <span class="text-rose-500">*</span></label>
-        <textarea v-model="reason" rows="2" class="w-full rounded-xl border border-slate-200 p-3 text-sm focus:border-merchant-primary focus:ring-1 focus:ring-merchant-primary outline-none transition" placeholder="Contoh: Salah input nominal"></textarea>
+        <label class="text-xs font-bold text-slate-700 uppercase">Alasan Penambahan <span class="text-rose-500">*</span></label>
+        <textarea v-model="reason" rows="2" class="w-full rounded-xl border border-slate-200 p-3 text-sm focus:border-merchant-primary focus:ring-1 focus:ring-merchant-primary outline-none transition" placeholder="Contoh: Lupa input pengeluaran bensin"></textarea>
       </div>
 
       <div class="space-y-1.5">
@@ -80,7 +77,7 @@ const submit = async () => {
         <AppCreatableSelect
           v-model="form.category"
           :options="categories"
-          placeholder="Pilih atau ketik kategori..."
+          placeholder="Pilih atau ketik nama..."
         />
       </div>
 

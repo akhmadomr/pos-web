@@ -18,6 +18,10 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  createTypes: {
+    type: Array,
+    default: () => [], // e.g. [{ label: 'Buat baru Operasional', value: 'ops' }, { label: 'Buat baru Bahan Baku', value: 'hpp' }]
+  }
 })
 
 const emit = defineEmits(['update:modelValue', 'select-existing', 'create-new'])
@@ -75,11 +79,11 @@ const selectOption = (option) => {
   closeDropdown()
 }
 
-const createNew = () => {
+const createNew = (createType = null) => {
   const label = inputValue.value.trim()
   if (!label) return
   emit('update:modelValue', label)
-  emit('create-new', label)
+  emit('create-new', { label, type: createType })
   closeDropdown()
 }
 
@@ -134,15 +138,30 @@ const onBlur = () => {
         {{ option.label }}
       </button>
 
-      <button
-        v-if="showCreateOption"
-        type="button"
-        class="flex w-full border-t border-slate-100 px-4 py-2.5 text-left text-sm font-semibold text-merchant-primary hover:bg-slate-50"
-        @mousedown.prevent="createNew"
-      >
-        <i class="pi pi-plus mr-2 text-xs" />
-        Buat baru: "{{ inputValue.trim() }}"
-      </button>
+      <template v-if="showCreateOption">
+        <template v-if="createTypes.length > 0">
+          <button
+            v-for="ctype in createTypes"
+            :key="ctype.value"
+            type="button"
+            class="flex w-full border-t border-slate-100 px-4 py-2.5 text-left text-sm font-semibold text-merchant-primary hover:bg-slate-50"
+            @mousedown.prevent="createNew(ctype.value)"
+          >
+            <i class="pi pi-plus mr-2 text-xs" />
+            {{ ctype.label }}: "{{ inputValue.trim() }}"
+          </button>
+        </template>
+        <template v-else>
+          <button
+            type="button"
+            class="flex w-full border-t border-slate-100 px-4 py-2.5 text-left text-sm font-semibold text-merchant-primary hover:bg-slate-50"
+            @mousedown.prevent="createNew()"
+          >
+            <i class="pi pi-plus mr-2 text-xs" />
+            Buat baru: "{{ inputValue.trim() }}"
+          </button>
+        </template>
+      </template>
     </div>
   </div>
 </template>
