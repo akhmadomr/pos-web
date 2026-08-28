@@ -45,6 +45,7 @@ const submit = async () => {
 
   const payload = {
     category: form.value.category,
+    type: props.expense.type,
     qty: Number(form.value.qty),
     amount: Number(form.value.amount),
     price_per_item: Number(form.value.amount) / Number(form.value.qty)
