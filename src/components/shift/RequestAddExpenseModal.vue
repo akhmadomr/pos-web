@@ -1,8 +1,8 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import AppModal from '@/components/common/AppModal.vue'
 import AppCreatableSelect from '@/components/common/AppCreatableSelect.vue'
-import { requestAddExpense, fetchExpenseCategories } from '@/api/shifts'
+import { requestAddExpense, fetchExpenseCategories, fetchCriticalIngredients } from '@/api/shifts'
 import { formatRupiah } from '@/utils/currency'
 
 const props = defineProps({
@@ -13,17 +13,39 @@ const emit = defineEmits(['close', 'submitted'])
 const submitting = ref(false)
 const reason = ref('')
 const form = ref({
+  type: 'ops',
   category: '',
   qty: 1,
   amount: ''
 })
 
 const categories = ref([])
+const ingredients = ref([])
+
+const unifiedOptions = computed(() => {
+  const ingOptions = ingredients.value.map(i => ({ label: i.name + ' (HPP)', value: i.name, rawLabel: i.name, type: 'hpp' }))
+  const catOptions = categories.value.map(c => ({ label: c.label + ' (OPS)', value: c.value, rawLabel: c.label, type: 'ops' }))
+  return [...ingOptions, ...catOptions.filter(c => !ingOptions.some(i => i.value === c.value))]
+})
+
+const handleSelectExisting = (option) => {
+  form.value.category = option.rawLabel || option.value
+  form.value.type = option.type || 'ops'
+}
+
+const handleCreateNew = (payload) => {
+  form.value.category = payload.label
+  form.value.type = payload.type || 'ops'
+}
 
 onMounted(async () => {
   try {
-    const data = await fetchExpenseCategories()
-    categories.value = data.map(c => ({ label: c, value: c }))
+    const [catRes, ingRes] = await Promise.all([
+      fetchExpenseCategories(),
+      fetchCriticalIngredients()
+    ])
+    categories.value = catRes.map(c => ({ label: c, value: c }))
+    ingredients.value = ingRes
   } catch(e) {}
 })
 
@@ -42,6 +64,7 @@ const submit = async () => {
 
   const payload = {
     category: form.value.category,
+    type: form.value.type,
     qty: Number(form.value.qty),
     amount: Number(form.value.amount),
     price_per_item: Number(form.value.amount) / Number(form.value.qty)
@@ -76,8 +99,11 @@ const submit = async () => {
         <label class="text-xs font-bold text-slate-700 uppercase">Kategori / Keterangan <span class="text-rose-500">*</span></label>
         <AppCreatableSelect
           v-model="form.category"
-          :options="categories"
+          :options="unifiedOptions"
+          :create-types="[{ label: 'Bahan Baku (HPP)', value: 'hpp' }, { label: 'Operasional', value: 'ops' }]"
           placeholder="Pilih atau ketik nama..."
+          @select-existing="handleSelectExisting"
+          @create-new="handleCreateNew"
         />
       </div>
 
@@ -95,7 +121,7 @@ const submit = async () => {
       <div class="flex gap-3 pt-2 border-t border-slate-100 mt-4">
         <button @click="$emit('close')" class="flex-1 rounded-xl bg-slate-100 py-3 text-sm font-bold text-slate-600 hover:bg-slate-200 transition">Batal</button>
         <button @click="submit" :disabled="!reason || submitting" class="flex-1 rounded-xl bg-merchant-primary py-3 text-sm font-bold text-white hover:bg-merchant-secondary transition disabled:opacity-50 flex items-center justify-center gap-2">
-          <i v-if="submitting" class="pi pi-spin pi-spinner"></i> Ajukan Edit
+          <i v-if="submitting" class="pi pi-spin pi-spinner"></i> Ajukan Penambahan
         </button>
       </div>
     </div>
