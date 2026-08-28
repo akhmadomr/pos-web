@@ -10,6 +10,7 @@ import 'dayjs/locale/id'
 import AppModal from '@/components/common/AppModal.vue'
 import RequestEditOrderModal from '@/components/order/RequestEditOrderModal.vue'
 import RequestEditExpenseModal from '@/components/shift/RequestEditExpenseModal.vue'
+import RequestAddExpenseModal from '@/components/shift/RequestAddExpenseModal.vue'
 
 dayjs.locale('id')
 
@@ -36,6 +37,7 @@ const showEditOrderModal = ref(false)
 const showCancelExpenseModal = ref(false)
 const selectedExpense = ref(null)
 const showEditExpenseModal = ref(false)
+const showAddExpenseModal = ref(false)
 
 const isSubmitting = ref(false)
 
@@ -172,6 +174,10 @@ const onOrderEditSubmitted = async () => {
 }
 
 // Actions for Expense
+const openAddExpense = () => {
+  showAddExpenseModal.value = true
+}
+
 const openEditExpense = (expense) => {
   selectedExpense.value = expense
   showEditExpenseModal.value = true
@@ -215,7 +221,8 @@ const getEditStatusBadge = (status) => {
 const getExpenseEditStatusBadge = (status) => {
   if (status === 'pending_edit') return { text: 'Menunggu (Edit)', class: 'bg-amber-100 text-amber-700' }
   if (status === 'pending_cancel') return { text: 'Menunggu (Hapus)', class: 'bg-amber-100 text-amber-700' }
-  return null
+  if (status === 'pending_add') return { text: 'Menunggu (Tambah)', class: 'bg-sky-100 text-sky-700' }
+  return { text: status, class: 'bg-slate-100 text-slate-700' }
 }
 
 const orderSearch = ref('')
@@ -540,9 +547,14 @@ const getRankBadgeClass = (idx) => {
 
         <!-- Pengeluaran -->
         <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
-          <h2 class="mb-4 flex items-center gap-2 text-base font-black uppercase tracking-widest text-slate-900">
-            <i class="pi pi-money-bill text-rose-500" /> Daftar Pengeluaran
-          </h2>
+          <div class="mb-4 flex items-center justify-between">
+            <h2 class="flex items-center gap-2 text-base font-black uppercase tracking-widest text-slate-900">
+              <i class="pi pi-money-bill text-rose-500" /> Daftar Pengeluaran
+            </h2>
+            <button v-if="!currentView.isDaily && currentView.shift?.closed_at" @click="openAddExpense" class="text-xs font-bold text-merchant-primary bg-merchant-primary/10 hover:bg-merchant-primary/20 px-3 py-1.5 rounded-lg transition">
+              <i class="pi pi-plus mr-1"></i> Tambah
+            </button>
+          </div>
           <div v-if="currentView.data.expenses.length" class="space-y-3">
             <div v-for="exp in currentView.data.expenses" :key="exp.id" class="flex flex-col rounded-xl border border-slate-100 bg-slate-50 p-4" :class="exp.status === 'cancelled' ? 'opacity-60' : ''">
               <div class="flex items-center justify-between mb-2">
@@ -671,10 +683,10 @@ const getRankBadgeClass = (idx) => {
                       <button @click.stop="orderStatusFilter = 'cancelled'; showOrderFilters = false" class="w-full text-left px-3 py-2 text-xs hover:bg-slate-50" :class="{ 'font-bold text-merchant-primary': orderStatusFilter === 'cancelled' }">Batal</button>
                     </div>
                   </th>
-                  <th class="p-3 text-center">Aksi</th>
                   <th class="p-3 text-right cursor-pointer select-none" @click="orderSortBy = orderSortBy === 'total_desc' ? 'total_asc' : 'total_desc'">
                     Total (Rp) <i :class="['pi text-[10px] ml-1 text-slate-300', orderSortBy === 'total_asc' ? 'pi-arrow-up text-slate-500' : 'pi-arrow-down']"></i>
                   </th>
+                  <th class="p-3 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
@@ -704,6 +716,7 @@ const getRankBadgeClass = (idx) => {
                       </span>
                     </div>
                   </td>
+                  <td class="p-3 text-right font-bold text-slate-900">{{ formatRupiah(order.total_amount) }}</td>
                   <td class="p-3">
                     <div class="flex justify-center gap-2" v-if="order.status === 'completed' && order.edit_status !== 'pending' && order.edit_status !== 'pending_cancel'">
                       <button @click="openEditOrder(order)" class="h-7 w-7 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 flex items-center justify-center transition" title="Edit Pesanan">
@@ -714,7 +727,6 @@ const getRankBadgeClass = (idx) => {
                       </button>
                     </div>
                   </td>
-                  <td class="p-3 text-right font-bold text-slate-900">{{ formatRupiah(order.total_amount) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -771,6 +783,13 @@ const getRankBadgeClass = (idx) => {
       @submitted="onOrderEditSubmitted"
     />
 
+    <RequestAddExpenseModal
+      v-if="showAddExpenseModal"
+      :shift-id="currentView.shift.id"
+      @close="showAddExpenseModal = false"
+      @submitted="onExpenseEditSubmitted"
+    />
+
     <RequestEditExpenseModal
       v-if="showEditExpenseModal"
       :expense="selectedExpense"
@@ -778,7 +797,7 @@ const getRankBadgeClass = (idx) => {
       @submitted="onExpenseEditSubmitted"
     />
 
-    <AppModal v-model="showCancelOrderModal" title="Pengajuan Batal Pesanan">
+    <AppModal :show="showCancelOrderModal" @close="showCancelOrderModal = false" title="Pengajuan Batal Pesanan">
       <div class="p-4 md:p-6 space-y-4">
         <div class="rounded-lg bg-amber-50 p-4 border border-amber-200">
           <p class="text-sm text-amber-800">Anda akan mengajukan pembatalan pesanan <strong>{{ selectedOrder?.order_number }}</strong>. Admin perlu menyetujui permintaan ini sebelum stok dikembalikan.</p>
@@ -796,7 +815,7 @@ const getRankBadgeClass = (idx) => {
       </div>
     </AppModal>
 
-    <AppModal v-model="showCancelExpenseModal" title="Pengajuan Hapus Pengeluaran">
+    <AppModal :show="showCancelExpenseModal" @close="showCancelExpenseModal = false" title="Pengajuan Hapus Pengeluaran">
       <div class="p-4 md:p-6 space-y-4">
         <div class="rounded-lg bg-amber-50 p-4 border border-amber-200">
           <p class="text-sm text-amber-800">Anda akan mengajukan penghapusan pengeluaran <strong>{{ selectedExpense?.category }}</strong> sejumlah <strong>{{ formatRupiah(selectedExpense?.amount) }}</strong>. Admin perlu menyetujui permintaan ini.</p>

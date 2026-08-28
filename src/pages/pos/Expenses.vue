@@ -11,6 +11,11 @@ import { idbGet, idbSet } from '@/utils/indexeddb'
 import { enqueue, SYNC_TYPE } from '@/services/SyncService'
 import { useAuthStore } from '@/stores/auth.store'
 
+const formatInputRupiah = (val) => {
+  const num = String(val).replace(/\D/g, '')
+  return num ? parseInt(num, 10).toLocaleString('id-ID') : ''
+}
+
 const authStore = useAuthStore()
 
 const expenses = ref([])
@@ -21,6 +26,7 @@ const error = ref('')
 const successMessage = ref('')
 
 const form = ref({
+  type: 'ops',
   category: '',
   qty: 1,
   price_per_item: '',
@@ -31,6 +37,22 @@ const ingredients = ref([])
 const selectedIngredient = computed(() => {
   return ingredients.value.find(i => i.name === form.value.category)
 })
+
+const unifiedOptions = computed(() => {
+  const ingOptions = ingredients.value.map(i => ({ label: i.name + ' (HPP)', value: i.name, rawLabel: i.name, type: 'hpp' }))
+  const catOptions = categories.value.map(c => ({ label: c.label + ' (OPS)', value: c.value, rawLabel: c.label, type: 'ops' }))
+  return [...ingOptions, ...catOptions.filter(c => !ingOptions.some(i => i.value === c.value))]
+})
+
+const handleSelectExisting = (option) => {
+  form.value.category = option.rawLabel || option.value
+  form.value.type = option.type || 'ops'
+}
+
+const handleCreateNew = (payload) => {
+  form.value.category = payload.label
+  form.value.type = payload.type || 'ops'
+}
 
 const totalExpenses = computed(() => {
   return expenses.value.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0)
@@ -96,6 +118,7 @@ const loadData = async () => {
         expenses.value = localExpenses.map(e => ({
           id: e.local_id,
           category: e.category,
+          type: e.type || 'ops',
           amount: e.amount,
           qty: e.qty,
           price_per_item: e.price_per_item,
@@ -125,6 +148,7 @@ const submitExpense = async () => {
   successMessage.value = ''
   
   const payload = {
+    type: form.value.type,
     category: form.value.category,
     qty: Number(form.value.qty),
     price_per_item: Number(String(form.value.price_per_item).replace(/\D/g, '')),
@@ -150,6 +174,7 @@ const submitExpense = async () => {
       categories.value.push({ label: payload.category, value: payload.category })
     }
     
+    form.value.type = 'ops'
     form.value.category = ''
     form.value.qty = 1
     form.value.price_per_item = ''
@@ -179,6 +204,7 @@ const submitExpense = async () => {
         is_offline: true,
       })
       
+      form.value.type = 'ops'
       form.value.category = ''
       form.value.qty = 1
       form.value.price_per_item = ''
@@ -195,15 +221,18 @@ const submitExpense = async () => {
 const cancelingExpense = ref(null)
 const cancelReason = ref('')
 const loadingCancel = ref(false)
+const cancelErrors = ref({})
 
 const openCancelModal = (exp) => {
   cancelingExpense.value = exp
   cancelReason.value = ''
+  cancelErrors.value = {}
 }
 
 const submitCancel = async () => {
+  cancelErrors.value = {}
   if (!cancelReason.value) {
-    error.value = 'Alasan pembatalan harus diisi.'
+    cancelErrors.value.reason = 'Alasan pembatalan harus diisi.'
     return
   }
   
@@ -214,7 +243,12 @@ const submitCancel = async () => {
     cancelingExpense.value = null
     loadData()
   } catch (err) {
-    error.value = err.response?.data?.message || 'Gagal mengajukan pembatalan.'
+    if (err.response?.status === 422) {
+      const msgs = err.response.data.errors
+      if (msgs?.reason) cancelErrors.value.reason = msgs.reason[0]
+    } else {
+      cancelErrors.value.general = err.response?.data?.message || 'Gagal mengajukan pembatalan.'
+    }
   } finally {
     loadingCancel.value = false
   }
@@ -224,37 +258,51 @@ const editingExpense = ref(null)
 const editReason = ref('')
 const editData = ref({ amount: '', qty: 1, price_per_item: '' })
 const loadingEdit = ref(false)
+const editErrors = ref({})
 
 const openEditModal = (exp) => {
   editingExpense.value = exp
   editReason.value = ''
+  editErrors.value = {}
   editData.value = { 
-    amount: exp.amount, 
+    amount: formatInputRupiah(Math.round(Number(exp.amount))), 
     qty: exp.qty, 
     price_per_item: exp.price_per_item 
   }
 }
 
 const submitEdit = async () => {
+  editErrors.value = {}
+  if (!editData.value.amount) {
+    editErrors.value.amount = 'Harga baru (total) harus diisi.'
+    return
+  }
   if (!editReason.value) {
-    error.value = 'Alasan edit harus diisi.'
+    editErrors.value.reason = 'Alasan edit harus diisi.'
     return
   }
   
   loadingEdit.value = true
   try {
+    const numericAmount = Number(String(editData.value.amount).replace(/\D/g, ''))
     await requestEditExpense(editingExpense.value.id, {
       reason: editReason.value,
-      amount: Number(editData.value.amount),
+      amount: numericAmount,
       category: editingExpense.value.category,
       qty: Number(editData.value.qty),
-      price_per_item: Number(editData.value.amount) / Number(editData.value.qty)
+      price_per_item: numericAmount / Number(editData.value.qty)
     })
     successMessage.value = 'Pengajuan edit berhasil dikirim. Silahkan tunggu admin.'
     editingExpense.value = null
     loadData()
   } catch (err) {
-    error.value = err.response?.data?.message || 'Gagal mengajukan edit.'
+    if (err.response?.status === 422) {
+      const msgs = err.response.data.errors
+      if (msgs?.reason) editErrors.value.reason = msgs.reason[0]
+      if (msgs?.amount) editErrors.value.amount = msgs.amount[0]
+    } else {
+      editErrors.value.general = err.response?.data?.message || 'Gagal mengajukan edit.'
+    }
   } finally {
     loadingEdit.value = false
   }
@@ -275,9 +323,9 @@ onMounted(() => {
     <AppAlert v-if="error" type="error" :message="error" class="mb-4" dismissible @dismiss="error = ''" />
     <AppAlert v-if="successMessage" type="success" :message="successMessage" class="mb-4" dismissible @dismiss="successMessage = ''" />
 
-    <div class="grid flex-1 gap-4 md:gap-6 min-h-0 lg:grid-cols-5">
+    <div class="grid flex-1 gap-4 md:gap-6 min-h-0 lg:grid-cols-5 overflow-y-auto lg:overflow-visible pb-4 lg:pb-0">
       <!-- Form Input -->
-      <section class="flex flex-col min-h-0 lg:col-span-2">
+      <section class="flex flex-col shrink-0 lg:col-span-2">
         <div class="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
           <h3 class="mb-3 md:mb-4 text-[10px] md:text-sm font-bold uppercase tracking-wider text-slate-400">Tambah Pengeluaran</h3>
           
@@ -286,8 +334,11 @@ onMounted(() => {
               <label class="mb-1 block text-[10px] md:text-xs font-bold uppercase tracking-wider text-slate-500">Nama Pengeluaran</label>
               <AppCreatableSelect
                 v-model="form.category"
-                :options="categories"
+                :options="unifiedOptions"
+                :create-types="[{ label: 'Buat baru Operasional', value: 'ops' }, { label: 'Buat baru Bahan Baku (HPP)', value: 'hpp' }]"
                 placeholder="Pilih atau ketik nama..."
+                @select-existing="handleSelectExisting"
+                @create-new="handleCreateNew"
               />
             </div>
             
@@ -317,7 +368,7 @@ onMounted(() => {
                     type="text"
                     class="w-full rounded-xl border border-slate-200 py-2 md:py-2.5 pl-8 md:pl-10 pr-3 md:pr-4 text-xs md:text-sm font-medium focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
                     placeholder="0"
-                    @input="form.price_per_item = form.price_per_item.replace(/\D/g, '')"
+                    @input="form.price_per_item = formatInputRupiah($event.target.value)"
                   />
                 </div>
               </div>
@@ -388,7 +439,12 @@ onMounted(() => {
             <div v-if="filteredExpenses.length" class="space-y-2 md:space-y-3">
               <div v-for="exp in filteredExpenses" :key="exp.id" class="flex items-center justify-between rounded-xl border border-slate-100 p-3 md:p-4 hover:bg-slate-50 transition">
                 <div class="flex flex-col gap-0.5 md:gap-1">
-                  <span class="text-sm md:text-base font-bold text-slate-900">{{ exp.category }}</span>
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm md:text-base font-bold text-slate-900">{{ exp.category }}</span>
+                    <span :class="['px-1.5 py-0.5 rounded text-[8px] font-bold uppercase', exp.type === 'hpp' ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700']">
+                      {{ exp.type === 'hpp' ? 'HPP' : 'OPS' }}
+                    </span>
+                  </div>
                   <div class="flex items-center gap-1.5 md:gap-2 text-[10px] md:text-xs text-slate-500">
                     <span>{{ exp.qty }} x {{ formatRupiah(exp.price_per_item) }}</span>
                     <span class="w-1 h-1 rounded-full bg-slate-300"></span>
@@ -429,13 +485,16 @@ onMounted(() => {
         <p class="mb-4 text-sm text-slate-500">
           Pengeluaran <strong>{{ cancelingExpense?.category }}</strong>. Masukkan alasan pembatalan. Permintaan ini harus disetujui oleh admin.
         </p>
+        <AppAlert v-if="cancelErrors.general" type="error" :message="cancelErrors.general" class="mb-3" />
         <textarea
           v-model="cancelReason"
           rows="3"
           placeholder="Alasan batal..."
-          class="mb-4 w-full rounded-xl border border-slate-200 p-3 text-sm focus:border-merchant-primary focus:ring-merchant-primary"
+          class="mb-1 w-full rounded-xl border p-3 text-sm focus:border-merchant-primary focus:ring-merchant-primary"
+          :class="cancelErrors.reason ? 'border-rose-300' : 'border-slate-200'"
         ></textarea>
-        <div class="flex gap-3">
+        <p v-if="cancelErrors.reason" class="mb-4 text-xs font-medium text-rose-500">{{ cancelErrors.reason }}</p>
+        <div class="flex gap-3 mt-4">
           <button @click="cancelingExpense = null" class="flex-1 rounded-xl bg-slate-100 py-3 text-sm font-bold text-slate-600 hover:bg-slate-200">
             Tutup
           </button>
@@ -460,6 +519,8 @@ onMounted(() => {
           Pengeluaran <strong>{{ editingExpense?.category }}</strong>. Masukkan data perbaikan dan alasan edit.
         </p>
         
+        <AppAlert v-if="editErrors.general" type="error" :message="editErrors.general" class="mb-3" />
+        
         <div class="space-y-3 mb-4">
           <div>
             <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Harga Baru (Total)</label>
@@ -468,11 +529,13 @@ onMounted(() => {
               <input
                 v-model="editData.amount"
                 type="text"
-                class="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-4 text-sm font-medium focus:border-merchant-primary focus:outline-none"
+                class="w-full rounded-xl border py-2.5 pl-10 pr-4 text-sm font-medium focus:border-merchant-primary focus:outline-none"
+                :class="editErrors.amount ? 'border-rose-300' : 'border-slate-200'"
                 placeholder="0"
-                @input="editData.amount = String(editData.amount).replace(/\D/g, '')"
+                @input="editData.amount = formatInputRupiah($event.target.value)"
               />
             </div>
+            <p v-if="editErrors.amount" class="mt-1 text-xs font-medium text-rose-500">{{ editErrors.amount }}</p>
           </div>
           <div>
             <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Alasan Edit</label>
@@ -480,8 +543,10 @@ onMounted(() => {
               v-model="editReason"
               rows="2"
               placeholder="Alasan edit..."
-              class="w-full rounded-xl border border-slate-200 p-3 text-sm focus:border-merchant-primary focus:ring-merchant-primary"
+              class="w-full rounded-xl border p-3 text-sm focus:border-merchant-primary focus:ring-merchant-primary"
+              :class="editErrors.reason ? 'border-rose-300' : 'border-slate-200'"
             ></textarea>
+            <p v-if="editErrors.reason" class="mt-1 text-xs font-medium text-rose-500">{{ editErrors.reason }}</p>
           </div>
         </div>
 

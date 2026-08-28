@@ -34,13 +34,36 @@ const loadData = async () => {
       product_name: item.product_name,
       variant_label: item.variant_label,
       quantity: item.quantity,
-      unit_price: item.unit_price,
+      unit_price: Number(item.unit_price) || 0,
       notes: item.notes || '',
-      addons_price: item.addons_price || 0,
+      addons_price: Number(item.addons_price) || 0,
       addons_label: item.addons_label || '',
       is_new: false,
-      deleted: false
+      deleted: false,
+      _variants: {},
+      _addons: {}
     }))
+
+    // Init existing variants/addons
+    editItems.value.forEach(item => {
+      const prod = productsData.find(p => p.id === item.product_id)
+      if (prod) {
+        const vLabels = (item.variant_label || '').split(',').map(s => s.trim())
+        prod.variants?.forEach(v => {
+          if (vLabels.includes(v.name)) item._variants[v.type] = v.name
+        })
+        
+        const aLabels = item.addons_label || ''
+        prod.addons?.forEach(a => {
+          const match = aLabels.match(new RegExp(`(\\d+)x\\s+${a.name}`))
+          if (match) {
+            item._addons[a.id] = parseInt(match[1])
+          } else if (aLabels.includes(a.name)) {
+            item._addons[a.id] = 1
+          }
+        })
+      }
+    })
   } catch (e) {
     alert('Gagal memuat detail pesanan')
     emit('close')
@@ -63,7 +86,9 @@ const addProduct = (prod) => {
     addons_price: 0,
     addons_label: '',
     is_new: true,
-    deleted: false
+    deleted: false,
+    _variants: {},
+    _addons: {}
   })
   newProductQuery.value = ''
 }
@@ -85,6 +110,62 @@ const totalAmount = computed(() => {
     return sum + (Number(item.quantity) * (Number(item.unit_price) + Number(item.addons_price)))
   }, 0) - (order.value?.discount_amount || 0) + (order.value?.tax_amount || 0)
 })
+
+const getProduct = (id) => products.value.find(p => p.id === id)
+
+const groupVariantsByType = (variants) => {
+  return (variants || []).reduce((acc, curr) => {
+    if (!acc[curr.type]) acc[curr.type] = []
+    acc[curr.type].push(curr)
+    return acc
+  }, {})
+}
+
+const updateVariantLabel = (item) => {
+  const prod = getProduct(item.product_id)
+  if (!prod) return
+  let price = Number(prod.price || 0)
+  const labels = []
+  Object.values(item._variants).forEach(val => {
+    if (val) {
+      labels.push(val)
+      const vObj = prod.variants?.find(v => v.name === val)
+      if (vObj && vObj.price_adjustment) price += Number(vObj.price_adjustment)
+    }
+  })
+  item.variant_label = labels.join(', ')
+  item.unit_price = price
+}
+
+const toggleAddon = (item, addon, checked) => {
+  if (checked) item._addons[addon.id] = 1
+  else delete item._addons[addon.id]
+  updateAddonsLabel(item)
+}
+
+const updateAddonQty = (item, addon, delta) => {
+  const current = item._addons[addon.id] || 0
+  const next = current + delta
+  if (next <= 0) delete item._addons[addon.id]
+  else item._addons[addon.id] = next
+  updateAddonsLabel(item)
+}
+
+const updateAddonsLabel = (item) => {
+  const prod = getProduct(item.product_id)
+  if (!prod) return
+  let price = 0
+  const labels = []
+  Object.entries(item._addons).forEach(([id, qty]) => {
+    const aObj = prod.addons?.find(a => a.id === Number(id))
+    if (aObj) {
+      price += Number(aObj.price) * qty
+      labels.push(`${qty}x ${aObj.name}`)
+    }
+  })
+  item.addons_label = labels.join(', ')
+  item.addons_price = price
+}
 
 const submit = async () => {
   if (!reason.value) return alert('Alasan wajib diisi')
@@ -139,17 +220,54 @@ const submit = async () => {
               <div class="flex-1">
                 <p class="font-bold text-sm" :class="item.deleted ? 'line-through text-slate-400' : 'text-slate-900'">{{ item.product_name }}</p>
                 <p v-if="item.variant_label" class="text-[10px] text-slate-500">{{ item.variant_label }}</p>
-                <div v-if="!item.deleted" class="mt-3 flex items-center gap-3">
-                  <div class="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5">
-                    <button type="button" @click="item.quantity > 1 ? item.quantity-- : null" class="flex h-6 w-6 items-center justify-center rounded-md bg-white shadow-sm font-black">-</button>
-                    <span class="w-8 text-center text-xs font-bold">{{ item.quantity }}</span>
-                    <button type="button" @click="item.quantity++" class="flex h-6 w-6 items-center justify-center rounded-md bg-white shadow-sm font-black">+</button>
+                <div v-if="!item.deleted" class="mt-3 flex flex-col gap-2">
+                  <div class="flex items-center gap-2">
+                    <div class="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                      <button type="button" @click="item.quantity > 1 ? item.quantity-- : null" class="flex h-6 w-6 items-center justify-center rounded-md bg-white shadow-sm font-black">-</button>
+                      <span class="w-8 text-center text-xs font-bold">{{ item.quantity }}</span>
+                      <button type="button" @click="item.quantity++" class="flex h-6 w-6 items-center justify-center rounded-md bg-white shadow-sm font-black">+</button>
+                    </div>
+                    <input v-model="item.notes" placeholder="Catatan Khusus..." class="flex-1 text-xs px-2 py-1.5 border border-slate-200 rounded bg-white outline-none focus:border-merchant-primary" />
                   </div>
-                  <input v-model="item.notes" placeholder="Catatan..." class="flex-1 text-xs px-2 py-1 border rounded bg-slate-50 outline-none" />
+                  
+                  <!-- Variants Selection -->
+                  <div v-if="getProduct(item.product_id)?.variants?.length" class="flex flex-wrap gap-2">
+                    <template v-for="(options, type) in groupVariantsByType(getProduct(item.product_id).variants)" :key="type">
+                      <select v-model="item._variants[type]" @change="updateVariantLabel(item)" class="flex-1 text-xs px-2 py-1.5 border border-slate-200 rounded bg-white outline-none focus:border-merchant-primary min-w-[120px]">
+                        <option value="">- {{ type }} -</option>
+                        <option v-for="opt in options" :key="opt.name" :value="opt.name">{{ opt.name }} <template v-if="opt.price_adjustment > 0">(+{{opt.price_adjustment}})</template></option>
+                      </select>
+                    </template>
+                  </div>
+                  <div v-else class="flex items-center gap-2">
+                    <input v-model="item.variant_label" placeholder="Varian (Cth: Dingin)" class="flex-1 text-xs px-2 py-1.5 border border-slate-200 rounded bg-white outline-none focus:border-merchant-primary" />
+                  </div>
+
+                  <!-- Addons Selection -->
+                  <div v-if="getProduct(item.product_id)?.addons?.length" class="flex flex-col gap-1">
+                    <div v-for="addon in getProduct(item.product_id).addons" :key="addon.id" class="flex items-center justify-between text-xs bg-slate-50 border border-slate-100 rounded px-2 py-1">
+                      <label class="flex items-center gap-2 cursor-pointer flex-1">
+                        <input type="checkbox" :checked="item._addons[addon.id] > 0" @change="e => toggleAddon(item, addon, e.target.checked)" class="rounded border-slate-300 text-merchant-primary" />
+                        <span class="font-bold text-slate-700">{{ addon.name }} <span class="text-slate-400 font-normal">(+{{ formatRupiah(addon.price) }})</span></span>
+                      </label>
+                      <div v-if="item._addons[addon.id] > 0" class="flex items-center gap-2 shrink-0">
+                        <button type="button" @click="updateAddonQty(item, addon, -1)" class="flex h-5 w-5 items-center justify-center bg-white border rounded shadow-sm font-bold">-</button>
+                        <span class="w-4 text-center font-bold">{{ item._addons[addon.id] }}</span>
+                        <button type="button" @click="updateAddonQty(item, addon, 1)" class="flex h-5 w-5 items-center justify-center bg-white border rounded shadow-sm font-bold">+</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="flex items-center gap-2">
+                    <input v-model="item.addons_label" placeholder="Tambahan (Cth: Extra Shot)" class="flex-1 text-xs px-2 py-1.5 border border-slate-200 rounded bg-white outline-none focus:border-merchant-primary" />
+                    <div class="flex items-center rounded border border-slate-200 bg-white px-2 py-1.5 w-32 focus-within:border-merchant-primary transition-colors">
+                      <span class="text-[10px] text-slate-400 font-bold mr-1">Rp</span>
+                      <input type="number" v-model.number="item.addons_price" placeholder="Harga" class="flex-1 text-xs bg-transparent outline-none font-bold" />
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="text-right flex flex-col items-end gap-2">
-                <p class="font-bold text-sm" :class="item.deleted ? 'line-through text-slate-400' : 'text-slate-900'">{{ formatRupiah((item.unit_price + item.addons_price) * item.quantity) }}</p>
+                <p class="font-bold text-sm" :class="item.deleted ? 'line-through text-slate-400' : 'text-slate-900'">{{ formatRupiah((Number(item.unit_price) + Number(item.addons_price)) * Number(item.quantity)) }}</p>
                 <button type="button" @click="toggleDelete(idx)" class="text-[10px] px-2 py-1 rounded font-bold uppercase tracking-wider" :class="item.deleted ? 'bg-slate-200 text-slate-600' : 'bg-rose-100 text-rose-600'">
                   {{ item.deleted ? 'Batal Hapus' : 'Hapus' }}
                 </button>

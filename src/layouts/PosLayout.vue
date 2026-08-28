@@ -6,7 +6,10 @@ import AppButton from '@/components/common/AppButton.vue'
 import CloseShiftModal from '@/components/shift/CloseShiftModal.vue'
 import ShiftSummary from '@/components/shift/ShiftSummary.vue'
 import ProfileModal from '@/components/profile/ProfileModal.vue'
+import LowStockBanner from '@/components/layout/LowStockBanner.vue'
+import NotificationBell from '@/components/layout/NotificationBell.vue'
 import { useAuthStore } from '@/stores/auth.store'
+import { useNotificationStore } from '@/stores/notification.store'
 import { usePrinter } from '@/composables/usePrinter'
 import { useSettingsStore } from '@/stores/settings.store'
 import { useOfflineStore } from '@/stores/offline.store'
@@ -15,6 +18,7 @@ import logoUrl from '@/assets/logo kopirex-01.png'
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const notifStore = useNotificationStore()
 const settingsStore = useSettingsStore()
 const offlineStore = useOfflineStore()
 const printer = usePrinter()
@@ -95,6 +99,7 @@ const onShiftClosed = () => {
 onMounted(() => {
   settingsStore.load()
   printer.autoConnectBluetooth()
+  notifStore.fetchNotifications()
   
   clockTimer = window.setInterval(() => {
     now.value = dayjs()
@@ -248,6 +253,10 @@ onUnmounted(() => {
               </div>
             </div>
 
+            <div class="hidden lg:block">
+              <NotificationBell />
+            </div>
+
             <div class="hidden text-right lg:block">
               <p class="font-mono text-xl font-black leading-none tabular-nums text-slate-900">{{ clockLabel }}</p>
               <p class="mt-1 text-xs capitalize text-slate-500">{{ dateLabel }}</p>
@@ -256,9 +265,12 @@ onUnmounted(() => {
             <div class="relative">
               <button 
                 @click="showDropdown = !showDropdown" 
-                class="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-slate-600 transition hover:bg-slate-300 lg:h-10 lg:w-10"
+                class="relative flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-slate-600 transition hover:bg-slate-300 lg:h-10 lg:w-10"
               >
                 <i class="pi pi-user text-base lg:text-lg" />
+                <span v-if="notifStore.unreadCount > 0" class="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-sm lg:hidden">
+                  {{ notifStore.unreadCount > 9 ? '9+' : notifStore.unreadCount }}
+                </span>
               </button>
 
               <!-- Dropdown Menu -->
@@ -268,6 +280,10 @@ onUnmounted(() => {
                    <p class="truncate text-[10px] uppercase tracking-wider text-slate-500">{{ authStore.outletName }}</p>
                  </div>
                  <div class="py-1">
+                   <button @click="showDropdown = false; router.push('/pos/notifications')" class="flex w-full items-center justify-between px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 lg:hidden">
+                     <span class="flex items-center"><i class="pi pi-bell w-6 text-slate-400" /> Notifikasi</span>
+                     <span v-if="notifStore.unreadCount > 0" class="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">{{ notifStore.unreadCount }}</span>
+                   </button>
                    <button @click="showDropdown = false; showProfileModal = true" class="flex w-full items-center px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                      <i class="pi pi-user-edit w-6 text-slate-400" /> Profil Saya
                    </button>
@@ -318,6 +334,9 @@ onUnmounted(() => {
           </button>
         </div>
       </div>
+      
+      <!-- Low Stock Banner -->
+      <LowStockBanner v-if="authStore.hasActiveShift" />
 
       <main class="flex-1 flex flex-col min-h-0 p-2 sm:p-4 lg:p-6 overflow-y-auto">
         <router-view />
