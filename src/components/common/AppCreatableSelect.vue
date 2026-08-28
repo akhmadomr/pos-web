@@ -53,15 +53,18 @@ const showCreateOption = computed(() => props.allowCreate && Boolean(inputValue.
 watch(
   () => props.modelValue,
   (value) => {
+    if (inputValue.value === String(value)) return
     const matched = normalizedOptions.value.find((option) => String(option.value) === String(value))
+    if (matched && inputValue.value === matched.label) return
     inputValue.value = matched?.label ?? (value ? String(value) : '')
   },
   { immediate: true },
 )
 
 watch(normalizedOptions, () => {
+  if (inputValue.value === String(props.modelValue)) return
   const matched = normalizedOptions.value.find((option) => String(option.value) === String(props.modelValue))
-  if (matched) inputValue.value = matched.label
+  if (matched && inputValue.value !== matched.label) inputValue.value = matched.label
 })
 
 const openDropdown = () => {
