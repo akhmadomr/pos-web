@@ -11,6 +11,8 @@ import AppModal from '@/components/common/AppModal.vue'
 import RequestEditOrderModal from '@/components/order/RequestEditOrderModal.vue'
 import RequestEditExpenseModal from '@/components/shift/RequestEditExpenseModal.vue'
 import RequestAddExpenseModal from '@/components/shift/RequestAddExpenseModal.vue'
+import { fetchShiftReceipt, fetchDailyShiftReceipt } from '@/api/shifts'
+import { usePrinter } from '@/composables/usePrinter'
 
 dayjs.locale('id')
 
@@ -74,6 +76,31 @@ const handleDownload = async (exportFn, type) => {
 
 const downloadPdf = () => handleDownload(exportShiftDetailPdf, 'pdf')
 const downloadExcel = () => handleDownload(exportShiftDetailExcel, 'excel')
+
+const printer = usePrinter()
+const isPrinting = ref(false)
+const printCurrentShift = async () => {
+  isPrinting.value = true
+  try {
+    let receiptData
+    if (activeTab.value === 'daily') {
+      receiptData = await fetchDailyShiftReceipt(route.params.date)
+    } else {
+      receiptData = await fetchShiftReceipt(activeTab.value)
+    }
+    
+    if (receiptData?.data?.receipt_lines) {
+      await printer.printShiftReceipt(receiptData.data.receipt_lines)
+    } else {
+      alert('Gagal mengambil data struk.')
+    }
+  } catch (err) {
+    console.error(err)
+    alert('Terjadi kesalahan saat mencetak struk.')
+  } finally {
+    isPrinting.value = false
+  }
+}
 
 const loadDailyAnalytics = async () => {
   loading.value = true
@@ -357,6 +384,9 @@ const getRankBadgeClass = (idx) => {
         </div>
       </div>
       <div class="flex gap-2 shrink-0" v-if="!loading && !error && dailyData">
+        <button @click="printCurrentShift" :disabled="isPrinting" class="h-8 w-8 md:h-10 md:w-10 bg-blue-50 text-blue-600 border border-blue-200 rounded-xl hover:bg-blue-100 flex items-center justify-center transition disabled:opacity-50" title="Print Struk">
+          <i :class="isPrinting ? 'pi pi-spin pi-spinner' : 'pi pi-print'"></i>
+        </button>
         <button @click="downloadPdf" :disabled="isExportingPdf" class="h-8 w-8 md:h-10 md:w-10 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl hover:bg-rose-100 flex items-center justify-center transition disabled:opacity-50" title="Export PDF">
           <i :class="isExportingPdf ? 'pi pi-spin pi-spinner' : 'pi pi-file-pdf'"></i>
         </button>

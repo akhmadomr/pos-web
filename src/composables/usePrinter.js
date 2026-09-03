@@ -169,6 +169,141 @@ export function usePrinter() {
     }
   }
 
+  function escapeHtml(str) {
+    if (str == null) return ''
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  }
+
+  function printShiftViaBrowser(lines) {
+    let htmlBody = ''
+    lines.forEach(line => {
+      if (line.type === 'center') {
+        htmlBody += `<div class="center" style="font-weight:${line.bold?'bold':'normal'};margin-bottom:2px;">${escapeHtml(line.text)}</div>`
+      } else if (line.type === 'row') {
+        htmlBody += `<div style="display:flex;justify-content:space-between;font-weight:${line.bold?'bold':'normal'};"><span>${escapeHtml(line.left)}</span><span>${escapeHtml(line.right)}</span></div>`
+      } else if (line.type === 'separator') {
+        const border = line.text?.includes('=') ? '2px solid #000' : '1px dashed #000'
+        htmlBody += `<hr style="border:none; border-top:${border}; margin:4px 0;" />`
+      } else if (line.type === 'label') {
+        htmlBody += `<div style="font-weight:bold;margin-top:4px;">${escapeHtml(line.text)}</div>`
+      } else if (line.type === 'feed') {
+        htmlBody += `<div style="height:${(line.lines||1) * 10}px;"></div>`
+      }
+    })
+
+    const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <title>Struk Laporan</title>
+  <style>
+    @page { margin: 0; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 11px; width: 72mm; margin: 4mm auto; color: #000; line-height: 1.5;
+    }
+    .center { text-align: center; }
+  </style>
+</head>
+<body>
+  ${htmlBody}
+  <script>setTimeout(function(){ window.print(); }, 500);</script>
+</body>
+</html>`
+    const iframe = document.createElement('iframe')
+    iframe.style.position = 'fixed'
+    iframe.style.right = '0'
+    iframe.style.bottom = '0'
+    iframe.style.width = '0'
+    iframe.style.height = '0'
+    iframe.style.border = '0'
+    document.body.appendChild(iframe)
+    const doc = iframe.contentWindow.document
+    doc.open()
+    doc.write(html)
+    doc.close()
+    iframe.contentWindow.onafterprint = () => { setTimeout(() => { document.body.removeChild(iframe) }, 1000) }
+    return true
+  }
+
+  async function printShiftReceipt(lines) {
+    if (!lines || !lines.length) return false
+    
+    isPrinting.value = true
+    lastError.value = null
+
+    if (!bluetoothCharacteristic.value && localStorage.getItem('prefer_bluetooth_printer') === '1') {
+      let reconnected = await autoConnectBluetooth()
+      if (!reconnected) {
+        reconnected = await connectBluetooth()
+      }
+    }
+
+    try {
+      const escposLines = []
+      for (const line of lines) {
+        if (line.type === 'center') {
+          escposLines.push({ type: 'align', value: 'center' })
+          escposLines.push({ type: 'text', value: line.text, bold: line.bold })
+          escposLines.push({ type: 'align', value: 'left' })
+        } else if (line.type === 'row') {
+          escposLines.push({ type: 'keyvalue', key: line.left, value: line.right, bold: line.bold })
+        } else if (line.type === 'separator') {
+          escposLines.push({ type: 'separator', style: line.text?.includes('=') ? 'solid' : 'dashed' })
+        } else if (line.type === 'label') {
+          escposLines.push({ type: 'text', value: line.text, bold: true })
+        } else if (line.type === 'feed') {
+          escposLines.push({ type: 'feed', lines: line.lines })
+        }
+      }
+      escposLines.push({ type: 'cut' })
+      const escPosPayload = { lines: escposLines }
+
+      if (bluetoothCharacteristic.value) {
+        try {
+          const bytes = jsonToEscPos(escPosPayload)
+          const CHUNK_SIZE = 20
+          const char = bluetoothCharacteristic.value
+          for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+            const chunk = bytes.slice(i, i + CHUNK_SIZE)
+            if (char.properties.writeWithoutResponse) await char.writeValueWithoutResponse(chunk)
+            else await char.writeValue(chunk)
+            await new Promise(r => setTimeout(r, 50))
+          }
+          isPrinting.value = false
+          return true
+        } catch (bleErr) {
+          lastError.value = "Bluetooth Error: " + bleErr.message
+          isPrinting.value = false
+          return false
+        }
+      }
+
+      const response = await fetch(`${PRINT_SERVER}/print`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(escPosPayload),
+        signal: AbortSignal.timeout(3000),
+      })
+      if (response.ok) {
+        printerOnline.value = true
+        isPrinting.value = false
+        return true
+      }
+    } catch (err) {
+      printerOnline.value = false
+    }
+
+    isPrinting.value = false
+    if (bluetoothDevice.value) {
+      alert('Koneksi Bluetooth terputus atau bermasalah. Silakan hubungkan ulang.')
+      return false
+    }
+
+    return printShiftViaBrowser(lines)
+  }
+
   /**
    * Fungsi Helper untuk setup device BLE
    */
@@ -375,6 +510,7 @@ export function usePrinter() {
     isConnectingBluetooth,
     checkPrinterStatus,
     printReceipt,
+    printShiftReceipt,
     printViaBrowser,
     connectBluetooth,
     autoConnectBluetooth
