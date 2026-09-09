@@ -216,7 +216,7 @@ onUnmounted(() => {
 
     <div class="flex min-w-0 flex-1 flex-col">
       <header class="sticky top-0 z-40 border-b border-slate-200 bg-white shadow-sm">
-        <div class="flex items-center justify-between gap-2 px-3 py-2 lg:px-6 lg:py-3">
+        <div class="flex items-center justify-between gap-1 px-1 py-2 sm:gap-2 sm:px-3 lg:px-6 lg:py-3">
           
           <!-- LEFT: Logo (Trigger Sidebar) -->
           <button 
@@ -235,14 +235,14 @@ onUnmounted(() => {
           <div class="flex shrink-0 items-center gap-2 lg:gap-3">
             
             <!-- Status Icons -->
-            <div class="flex items-center gap-1.5 lg:gap-2 mr-1">
-              <div class="relative flex h-8 w-8 items-center justify-center rounded-full"
+            <div class="flex items-center gap-1 sm:gap-1.5 lg:gap-2 mr-0.5 sm:mr-1">
+              <div class="relative flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full"
                    :class="isOnline ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400 bg-slate-100'"
                    title="Status Internet">
                 <i class="pi pi-wifi text-sm lg:text-base" />
                 <div v-if="!isOnline" class="absolute h-0.5 w-5 rotate-45 rounded-full bg-slate-500" />
               </div>
-              <div class="relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full"
+              <div class="relative flex h-6 w-6 sm:h-8 sm:w-8 cursor-pointer items-center justify-center rounded-full"
                    :class="(printer.printerOnline.value || printer.bluetoothDevice.value) ? 'text-emerald-500 bg-emerald-50 hover:bg-emerald-100' : 'text-slate-400 bg-slate-100 hover:bg-slate-200'"
                    title="Status Printer (Klik untuk sambungkan manual)"
                    @click="printer.connectBluetooth()">
@@ -266,7 +266,7 @@ onUnmounted(() => {
             <div class="relative">
               <button 
                 @click="showDropdown = !showDropdown" 
-                class="relative flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-slate-600 transition hover:bg-slate-300 lg:h-10 lg:w-10"
+                class="relative flex h-7 w-7 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-slate-200 text-slate-600 transition hover:bg-slate-300 lg:h-10 lg:w-10"
               >
                 <i class="pi pi-user text-base lg:text-lg" />
                 <span v-if="notifStore.unreadCount > 0" class="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-sm lg:hidden">

@@ -22,6 +22,13 @@ const showSubmitModal = ref(false)
 const submitForm = ref({ notes: '', items: [] })
 const saving = ref(false)
 const searchIngredient = ref('')
+const activeNoteItem = ref(null)
+const showNoteModal = ref(false)
+
+const openItemNote = (item) => {
+  activeNoteItem.value = item
+  showNoteModal.value = true
+}
 
 const alert = ref({ show: false, type: 'success', message: '' })
 const showAlert = (type, message) => {
@@ -337,10 +344,15 @@ const getDaysRemainingText = (item) => {
                     <span class="absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold text-slate-400 uppercase pointer-events-none">{{ item.unit }}</span>
                   </div>
                   
-                  <div class="w-24 sm:w-32 relative">
-                    <i class="pi pi-pencil absolute left-2 top-1/2 -translate-y-1/2 text-slate-300 text-[9px]" />
-                    <input v-model="item.notes" type="text" placeholder="Catatan..." class="w-full pl-6 pr-2 py-1.5 rounded-md border border-slate-200 text-[10px] focus:border-merchant-primary outline-none" />
-                  </div>
+                  <button 
+                    type="button"
+                    @click="openItemNote(item)"
+                    :class="['p-2 rounded-lg border transition flex items-center justify-center relative', item.notes ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100']"
+                    :title="item.notes ? 'Catatan: ' + item.notes : 'Tambah Catatan'"
+                  >
+                    <i class="pi pi-pencil text-xs"></i>
+                    <span v-if="item.notes" class="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500"></span>
+                  </button>
                 </div>
               </div>
               
@@ -362,6 +374,30 @@ const getDaysRemainingText = (item) => {
                 {{ saving ? 'Mengirim...' : 'Ajukan Opname' }}
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Modal Input Catatan Item -->
+    <Teleport to="body">
+      <div v-if="showNoteModal && activeNoteItem" class="fixed inset-0 z-[150] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" @click="showNoteModal = false" />
+        <div class="relative w-full max-w-sm rounded-2xl bg-white p-4 shadow-2xl space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+            <h3 class="font-bold text-slate-900 text-xs truncate">Catatan: {{ activeNoteItem.name }}</h3>
+            <button @click="showNoteModal = false" class="text-slate-400 hover:text-slate-600">
+              <i class="pi pi-times text-xs"></i>
+            </button>
+          </div>
+          <textarea
+            v-model="activeNoteItem.notes"
+            rows="3"
+            class="w-full p-2.5 rounded-xl border border-slate-200 text-xs focus:border-merchant-primary outline-none"
+            placeholder="Tulis catatan khusus untuk bahan baku ini..."
+          ></textarea>
+          <div class="flex justify-end gap-2">
+            <button @click="showNoteModal = false" class="px-3 py-1.5 rounded-lg bg-merchant-primary text-white text-xs font-bold">Simpan</button>
           </div>
         </div>
       </div>
