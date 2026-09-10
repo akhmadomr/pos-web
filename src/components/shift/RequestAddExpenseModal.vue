@@ -23,7 +23,7 @@ const categories = ref([])
 const ingredients = ref([])
 
 const unifiedOptions = computed(() => {
-  const ingOptions = ingredients.value.map(i => ({ label: i.name + ' (HPP)', value: i.name, rawLabel: i.name, type: 'hpp' }))
+  const ingOptions = ingredients.value.map(i => ({ label: i.name + ' (Bahan)', value: i.name, rawLabel: i.name, type: 'hpp' }))
   const catOptions = categories.value.map(c => ({ label: c.label + ' (OPS)', value: c.value, rawLabel: c.label, type: 'ops' }))
   return [...ingOptions, ...catOptions.filter(c => !ingOptions.some(i => i.value === c.value))]
 })
@@ -100,7 +100,7 @@ const submit = async () => {
         <AppCreatableSelect
           v-model="form.category"
           :options="unifiedOptions"
-          :create-types="[{ label: 'Bahan Baku (HPP)', value: 'hpp' }, { label: 'Operasional', value: 'ops' }]"
+          :create-types="[{ label: 'Bahan Baku', value: 'hpp' }, { label: 'Operasional', value: 'ops' }]"
           placeholder="Pilih atau ketik nama..."
           @select-existing="handleSelectExisting"
           @create-new="handleCreateNew"
@@ -127,3 +127,4 @@ const submit = async () => {
     </div>
   </AppModal>
 </template>
+

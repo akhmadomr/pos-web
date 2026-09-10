@@ -61,6 +61,11 @@ const routes = [
         name: 'pos-notifications',
         component: () => import('@/pages/pos/Notifications.vue'),
       },
+      {
+        path: 'pos/stock-opnames',
+        name: 'pos-stock-opnames',
+        component: () => import('@/pages/pos/StockOpname.vue'),
+      },
     ],
   },
 ]

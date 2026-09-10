@@ -1,12 +1,13 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { fetchShiftHistory } from '@/api/shifts'
+import { fetchShiftHistory, fetchDailyShiftReceipt } from '@/api/shifts'
 import { formatRupiah } from '@/utils/currency'
 import dayjs from 'dayjs'
 import 'dayjs/locale/id'
 import { db } from '@/utils/db'
 import { idbGet, idbSet } from '@/utils/indexeddb'
+import { usePrinter } from '@/composables/usePrinter'
 
 dayjs.locale('id')
 
@@ -67,6 +68,28 @@ const goToDetail = (date) => {
   router.push(`/pos/shifts/daily/${date}`)
 }
 
+const printer = usePrinter()
+const isPrinting = ref(null)
+
+const printDaily = async (date, e) => {
+  e.stopPropagation()
+  if (isPrinting.value) return
+  isPrinting.value = date
+  try {
+    const receiptData = await fetchDailyShiftReceipt(date)
+    if (receiptData?.receipt_lines) {
+      await printer.printShiftReceipt(receiptData.receipt_lines)
+    } else {
+      alert('Gagal mengambil data struk harian.')
+    }
+  } catch (err) {
+    console.error(err)
+    alert('Terjadi kesalahan saat mencetak struk.')
+  } finally {
+    isPrinting.value = null
+  }
+}
+
 onMounted(() => {
   loadHistory()
 })
@@ -123,7 +146,12 @@ onMounted(() => {
               <p class="text-[9px] md:text-xs font-bold uppercase text-slate-400">Total Pendapatan</p>
               <p class="text-xs md:text-sm font-black text-emerald-600">{{ formatRupiah(shift.total_revenue) }}</p>
             </div>
-            <i class="pi pi-chevron-right text-slate-400 ml-auto sm:ml-2 text-sm" />
+            <div class="flex items-center gap-2">
+              <button @click="(e) => printDaily(shift.date, e)" :disabled="isPrinting === shift.date" class="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50 shrink-0" title="Print Struk Harian">
+                <i :class="isPrinting === shift.date ? 'pi pi-spin pi-spinner' : 'pi pi-print'"></i>
+              </button>
+              <i class="pi pi-chevron-right text-slate-400 text-sm ml-1" />
+            </div>
           </div>
         </div>
 

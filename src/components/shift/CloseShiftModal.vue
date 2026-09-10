@@ -5,7 +5,7 @@ import AppAlert from '@/components/common/AppAlert.vue'
 import AppButton from '@/components/common/AppButton.vue'
 import AppModal from '@/components/common/AppModal.vue'
 import AppNumpad from '@/components/common/AppNumpad.vue'
-import { closeShift, fetchShiftSummary, fetchCriticalIngredients } from '@/api/shifts'
+import { closeShift, fetchShiftSummary } from '@/api/shifts'
 import { useAuthStore } from '@/stores/auth.store'
 import { useOrderStore } from '@/stores/order.store'
 import { formatRupiah } from '@/utils/currency'
@@ -39,7 +39,6 @@ const loadingSummary = ref(false)
 const error = ref('')
 const apiWarnings = ref([])
 
-const stockOpnames = ref([])
 
 const paymentRows = computed(() => {
   if (!summary.value?.payments_by_method) return []
@@ -70,20 +69,8 @@ const loadSummary = async () => {
   loadingSummary.value = true
   error.value = ''
   try {
-    const [summaryData, ingredients] = await Promise.all([
-      fetchShiftSummary(authStore.user?.outlet_id),
-      fetchCriticalIngredients(),
-    ])
+    const summaryData = await fetchShiftSummary(authStore.user?.outlet_id)
     summary.value = summaryData
-    stockOpnames.value = ingredients.map(ing => ({
-      ingredient_id: ing.id,
-      name: ing.name,
-      unit: ing.unit,
-      expected_stock: ing.expected_stock,
-      actual_stock: '',
-      is_matching: true,
-      notes: '',
-    }))
   } catch (err) {
     const isNetworkError = !navigator.onLine ||
       err.message === 'Network Error' ||
@@ -105,7 +92,6 @@ const loadSummary = async () => {
         cash_diff_threshold: 10000,
         is_offline_summary: true,
       }
-      stockOpnames.value = []
       error.value = 'Mode Offline: Ringkasan dikalkulasi dari data lokal.'
     } else {
       error.value = err.response?.data?.message || 'Gagal memuat ringkasan shift.'
@@ -142,25 +128,32 @@ const submitCloseShift = async () => {
 
   loading.value = true
   try {
-    const formattedStockOpnames = stockOpnames.value
-      .filter(s => !s.is_matching)
-      .map(s => ({
-        ingredient_id: s.ingredient_id,
-        actual_stock: Number(s.actual_stock),
-        notes: s.notes,
-      }))
-
     const closePayload = {
       closing_cash: closingCashAmount.value,
       notes: picName.value ? `Penanggung Jawab: ${picName.value}` : null,
       expenses: [],
-      stock_opnames: formattedStockOpnames,
     }
 
     try {
       const response = await closeShift(closePayload)
       authStore.setShift(null)
       apiWarnings.value = response.warnings ?? []
+      
+      // Auto-print struk shift
+      try {
+        if (response.data?.id) {
+          const { fetchShiftReceipt } = await import('@/api/shifts')
+          const { usePrinter } = await import('@/composables/usePrinter')
+          const receiptData = await fetchShiftReceipt(response.data.id)
+          if (receiptData?.data?.receipt_lines) {
+            const printer = usePrinter()
+            await printer.printShiftReceipt(receiptData.data.receipt_lines)
+          }
+        }
+      } catch (err) {
+        console.error('Gagal cetak struk shift otomatis', err)
+      }
+
       emit('closed', response.data)
       emit('close')
       if (apiWarnings.value.length) {
@@ -329,53 +322,6 @@ const submitCloseShift = async () => {
         </div>
       </div>
 
-      <div v-else-if="step === 2" class="space-y-4">
-        <!-- Stock Opname Section -->
-        <div v-if="stockOpnames.length" class="rounded-2xl border border-slate-100 bg-white p-4">
-          <p class="mb-3 text-xs font-bold uppercase text-slate-400">Konfirmasi Stok Fisik Semua Bahan Baku</p>
-          <div class="space-y-4 max-h-[60vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200">
-            <div v-for="(opname, index) in stockOpnames" :key="opname.ingredient_id" class="rounded-xl border border-slate-100 bg-slate-50 p-3">
-              <div class="flex items-start justify-between">
-                <div>
-                  <p class="font-bold text-slate-900">{{ opname.name }}</p>
-                </div>
-                <label class="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer">
-                  <input type="checkbox" v-model="opname.is_matching" class="h-5 w-5 rounded border-slate-300 text-merchant-primary focus:ring-merchant-primary" />
-                  Sesuai
-                </label>
-              </div>
-              
-              <div v-if="!opname.is_matching" class="mt-3 grid gap-3 sm:grid-cols-2 pt-3 border-t border-slate-200/50">
-                <div>
-                  <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Stok Fisik Aktual</label>
-                  <div class="flex items-center gap-2">
-                    <input
-                      v-model="opname.actual_stock"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
-                    />
-                    <span class="text-xs font-semibold text-slate-500">{{ opname.unit }}</span>
-                  </div>
-                </div>
-                <div>
-                  <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Alasan Selisih</label>
-                  <input
-                    v-model="opname.notes"
-                    type="text"
-                    placeholder="Misal: Tumpah"
-                    class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div v-else class="text-center py-8">
-          <p class="text-slate-500 text-sm">Tidak ada bahan baku untuk dikonfirmasi.</p>
-        </div>
-      </div>
 
       <AppAlert v-if="error" type="error" :message="error" class="mt-4" dismissible @dismiss="error = ''" />
     </template>
@@ -400,23 +346,12 @@ const submitCloseShift = async () => {
           <span class="sm:hidden">Back</span>
         </AppButton>
         <AppButton 
-          variant="primary" 
+          variant="danger" 
           class="flex-1"
           :disabled="closingCashAmount < 0 || closingCash === ''"
-          @click="step = 2"
+          :loading="loading"
+          @click="submitCloseShift"
         >
-          <span class="hidden sm:inline">Lanjut Konfirmasi Stok</span>
-          <span class="sm:hidden">Lanjut</span>
-          <i class="pi pi-arrow-right ml-1 sm:ml-2" />
-        </AppButton>
-      </div>
-      <div v-else-if="step === 2" class="flex gap-2 w-full">
-        <AppButton variant="secondary" @click="step = 1" class="flex-1">
-          <i class="pi pi-arrow-left mr-1 sm:mr-2" /> 
-          <span class="hidden sm:inline">Kembali</span>
-          <span class="sm:hidden">Back</span>
-        </AppButton>
-        <AppButton variant="danger" :loading="loading" @click="submitCloseShift" class="flex-1">
           <i class="pi pi-sign-out sm:mr-1" />
           <span class="hidden sm:inline">Tutup Shift</span>
           <span class="sm:hidden">Tutup</span>
