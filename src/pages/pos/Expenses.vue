@@ -39,7 +39,7 @@ const selectedIngredient = computed(() => {
 })
 
 const unifiedOptions = computed(() => {
-  const ingOptions = ingredients.value.map(i => ({ label: i.name + ' (HPP)', value: i.name, rawLabel: i.name, type: 'hpp' }))
+  const ingOptions = ingredients.value.map(i => ({ label: i.name + ' (Bahan)', value: i.name, rawLabel: i.name, type: 'hpp' }))
   const catOptions = categories.value.map(c => ({ label: c.label + ' (OPS)', value: c.value, rawLabel: c.label, type: 'ops' }))
   return [...ingOptions, ...catOptions.filter(c => !ingOptions.some(i => i.value === c.value))]
 })
@@ -335,7 +335,7 @@ onMounted(() => {
               <AppCreatableSelect
                 v-model="form.category"
                 :options="unifiedOptions"
-                :create-types="[{ label: 'Buat baru Operasional', value: 'ops' }, { label: 'Buat baru Bahan Baku (HPP)', value: 'hpp' }]"
+                :create-types="[{ label: 'Buat baru Operasional', value: 'ops' }, { label: 'Buat baru Bahan Baku', value: 'hpp' }]"
                 placeholder="Pilih atau ketik nama..."
                 @select-existing="handleSelectExisting"
                 @create-new="handleCreateNew"
@@ -442,7 +442,7 @@ onMounted(() => {
                   <div class="flex items-center gap-2">
                     <span class="text-sm md:text-base font-bold text-slate-900">{{ exp.category }}</span>
                     <span :class="['px-1.5 py-0.5 rounded text-[8px] font-bold uppercase', exp.type === 'hpp' ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700']">
-                      {{ exp.type === 'hpp' ? 'HPP' : 'OPS' }}
+                      {{ exp.type === 'hpp' ? 'BAHAN' : 'OPS' }}
                     </span>
                   </div>
                   <div class="flex items-center gap-1.5 md:gap-2 text-[10px] md:text-xs text-slate-500">
@@ -567,3 +567,4 @@ onMounted(() => {
     </div>
   </div>
 </template>
+
