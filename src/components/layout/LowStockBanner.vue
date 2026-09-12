@@ -7,7 +7,7 @@ const authStore = useAuthStore()
 const lowStockIngredients = ref([])
 const SUPPRESS_DURATION = 30 * 60 * 1000 // 30 minutes in ms
 let pollInterval = null
-const formatNum = (val) => Math.round(Number(val) || 0).toLocaleString("id-ID")
+const formatNum = (val) => (Math.round((Number(val) || 0) * 100) / 100).toLocaleString("id-ID", { maximumFractionDigits: 2 })
 
 const fetchLowStock = async () => {
   if (!authStore.isAuthenticated) return

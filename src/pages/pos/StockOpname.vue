@@ -136,14 +136,15 @@ const doSubmitOpname = async () => {
 
 const formatNumber = (val) => {
   if (val === null || val === undefined || isNaN(val)) return '0'
-  return Math.round(Number(val)).toLocaleString('id-ID')
+  const rounded = Math.round(Number(val) * 100) / 100
+  return rounded.toLocaleString('id-ID', { maximumFractionDigits: 2 })
 }
 
 const formatDiff = (diff) => {
   if (diff === null || diff === undefined || isNaN(diff)) return '0'
-  const num = Math.round(Number(diff))
-  if (num > 0) return '+' + num.toLocaleString('id-ID')
-  return num.toLocaleString('id-ID')
+  const num = Math.round(Number(diff) * 100) / 100
+  if (num > 0) return '+' + num.toLocaleString('id-ID', { maximumFractionDigits: 2 })
+  return num.toLocaleString('id-ID', { maximumFractionDigits: 2 })
 }
 
 const statusBadge = (s) => ({
