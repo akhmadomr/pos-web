@@ -134,6 +134,19 @@ const doSubmitOpname = async () => {
   }
 }
 
+const formatNumber = (val) => {
+  if (val === null || val === undefined || isNaN(val)) return '0'
+  const rounded = Math.round(Number(val) * 100) / 100
+  return rounded.toLocaleString('id-ID', { maximumFractionDigits: 2 })
+}
+
+const formatDiff = (diff) => {
+  if (diff === null || diff === undefined || isNaN(diff)) return '0'
+  const num = Math.round(Number(diff) * 100) / 100
+  if (num > 0) return '+' + num.toLocaleString('id-ID', { maximumFractionDigits: 2 })
+  return num.toLocaleString('id-ID', { maximumFractionDigits: 2 })
+}
+
 const statusBadge = (s) => ({
   pending: 'bg-amber-100 text-amber-700',
   approved: 'bg-emerald-100 text-emerald-700',
@@ -208,16 +221,16 @@ const getDaysRemainingText = (item) => {
                   <div v-if="item.is_low_stock" class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0" title="Stok Menipis" />
                   <p class="font-black text-slate-900 text-sm truncate">{{ item.name }}</p>
                 </div>
-                <p class="text-[9px] text-slate-500 mb-1.5">Min. Stok: {{ item.min_stock_outlet }} {{ item.unit }}</p>
+                <p class="text-[9px] text-slate-500 mb-1.5">Min. Stok: {{ formatNumber(item.min_stock_outlet) }} {{ item.unit }}</p>
                 <div class="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-3 text-[8px] font-bold uppercase tracking-wider text-slate-400">
-                  <span>Avg: <span class="text-slate-700">{{ item.avg_daily_usage }} {{ item.unit }}/hr</span></span>
-                  <span>Max: <span class="text-slate-700">{{ item.max_daily_usage }} {{ item.unit }}/hr</span></span>
+                  <span>Avg: <span class="text-slate-700">{{ formatNumber(item.avg_daily_usage) }} {{ item.unit }}/hr</span></span>
+                  <span>Max: <span class="text-slate-700">{{ formatNumber(item.max_daily_usage) }} {{ item.unit }}/hr</span></span>
                 </div>
               </div>
               <div class="flex flex-col items-end shrink-0 text-right">
                 <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Sisa Stok (Sistem)</p>
                 <p :class="['text-lg font-black tabular-nums leading-none', item.is_low_stock ? 'text-rose-600' : 'text-slate-800']">
-                  {{ item.current_stock }} <span class="text-[9px] font-bold text-slate-400 ml-0.5">{{ item.unit }}</span>
+                  {{ formatNumber(item.current_stock) }} <span class="text-[9px] font-bold text-slate-400 ml-0.5">{{ item.unit }}</span>
                 </p>
                 <p :class="['text-[8px] font-bold mt-1.5 px-1.5 py-0.5 rounded leading-none', item.days_remaining <= 2 && item.avg_daily_usage > 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500']">
                   {{ getDaysRemainingText(item) }}
@@ -270,12 +283,12 @@ const getDaysRemainingText = (item) => {
               <div v-for="item in opname.items" :key="item.id" class="border border-slate-100 rounded-lg p-2 bg-slate-50 flex items-center justify-between">
                 <div class="min-w-0 pr-2">
                   <p class="text-[10px] font-bold text-slate-900 truncate">{{ item.ingredient?.name }}</p>
-                  <p class="text-[8px] text-slate-500 mt-0.5">Sistem: {{ item.expected_stock }}</p>
+                  <p class="text-[8px] text-slate-500 mt-0.5">Sistem: {{ formatNumber(item.expected_stock) }}</p>
                 </div>
                 <div class="text-right shrink-0">
-                  <p class="text-[10px] font-black text-slate-800 leading-tight">{{ item.actual_stock ?? '—' }} <span class="text-[8px] text-slate-400 font-bold">{{ item.ingredient?.unit }}</span></p>
+                  <p class="text-[10px] font-black text-slate-800 leading-tight">{{ item.actual_stock !== null ? formatNumber(item.actual_stock) : '—' }} <span class="text-[8px] text-slate-400 font-bold">{{ item.ingredient?.unit }}</span></p>
                   <p v-if="item.actual_stock !== null" :class="['text-[8px] font-bold', (item.actual_stock - item.expected_stock) < 0 ? 'text-rose-500' : (item.actual_stock - item.expected_stock) > 0 ? 'text-blue-500' : 'text-slate-400']">
-                    {{ (item.actual_stock - item.expected_stock) > 0 ? '+' : '' }}{{ (item.actual_stock - item.expected_stock).toFixed(2) }}
+                    {{ formatDiff(item.actual_stock - item.expected_stock) }}
                   </p>
                 </div>
               </div>
@@ -335,7 +348,7 @@ const getDaysRemainingText = (item) => {
               <div v-for="(item, idx) in filteredSubmitItems" :key="item.ingredient_id" class="p-2.5 sm:p-3 bg-white flex flex-row items-center gap-2 sm:gap-4 hover:bg-slate-50 transition">
                 <div class="flex-1 min-w-0 pr-2">
                   <p class="text-xs font-black text-slate-900 truncate">{{ item.name }}</p>
-                  <p class="text-[9px] text-slate-500 mt-0.5">Sistem: <span class="font-bold text-slate-700">{{ item.expected_stock }} {{ item.unit }}</span></p>
+                  <p class="text-[9px] text-slate-500 mt-0.5">Sistem: <span class="font-bold text-slate-700">{{ formatNumber(item.expected_stock) }} {{ item.unit }}</span></p>
                 </div>
                 
                 <div class="flex items-center gap-2 shrink-0">

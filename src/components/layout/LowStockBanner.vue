@@ -7,6 +7,7 @@ const authStore = useAuthStore()
 const lowStockIngredients = ref([])
 const SUPPRESS_DURATION = 30 * 60 * 1000 // 30 minutes in ms
 let pollInterval = null
+const formatNum = (val) => (Math.round((Number(val) || 0) * 100) / 100).toLocaleString("id-ID", { maximumFractionDigits: 2 })
 
 const fetchLowStock = async () => {
   if (!authStore.isAuthenticated) return
@@ -65,7 +66,7 @@ onUnmounted(() => {
     >
       <div class="flex items-start sm:items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs lg:text-sm font-bold flex-1 pr-8 sm:pr-0 leading-tight">
         <i class="pi pi-exclamation-triangle text-xs sm:text-sm lg:text-lg mt-0.5 sm:mt-0 shrink-0" />
-        <span>Bahan Baku Menipis: {{ item.name }} (Sisa: {{ Number(item.current_stock) }} {{ item.unit }} - Min: {{ Number(item.min_stock) }} {{ item.unit }}).</span>
+        <span>Bahan Baku Menipis: {{ item.name }} (Sisa: {{ formatNum(item.current_stock) }} {{ item.unit }} - Min: {{ formatNum(item.min_stock_outlet ?? item.min_stock) }} {{ item.unit }}).</span>
       </div>
       <button @click="dismissBanner(item.id)" class="absolute right-2 top-1.5 sm:static flex h-5 w-5 sm:h-7 sm:w-7 shrink-0 items-center justify-center rounded bg-amber-600 text-white transition hover:bg-amber-700" title="Abaikan selama 30 menit">
         <i class="pi pi-times text-[10px] sm:text-sm" />
