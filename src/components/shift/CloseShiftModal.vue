@@ -139,16 +139,27 @@ const submitCloseShift = async () => {
       authStore.setShift(null)
       apiWarnings.value = response.warnings ?? []
       
-      // Auto-print struk shift
+      // Auto-print struk termal otomatis sebelum keluar shift
       try {
-        if (response.data?.id) {
-          const { fetchShiftReceipt } = await import('@/api/shifts')
-          const { usePrinter } = await import('@/composables/usePrinter')
-          const receiptData = await fetchShiftReceipt(response.data.id)
-          if (receiptData?.data?.receipt_lines) {
-            const printer = usePrinter()
-            await printer.printShiftReceipt(receiptData.data.receipt_lines)
-          }
+        const { fetchShiftReceipt, fetchDailyShiftReceipt } = await import('@/api/shifts')
+        const { usePrinter } = await import('@/composables/usePrinter')
+        const printer = usePrinter()
+        
+        const scheduleName = (response.data?.schedule?.name || authStore.shift?.schedule?.name || '').toLowerCase()
+        const todayDate = new Date().toISOString().split('T')[0]
+        
+        let receiptData
+        if (scheduleName.includes('malam') || scheduleName.includes('night') || scheduleName.includes('2')) {
+          // Shift Malam: Cetak Ringkasan Harian (Shift Pagi + Malam + Total Harian)
+          receiptData = await fetchDailyShiftReceipt(todayDate)
+        } else if (response.data?.id) {
+          // Shift Pagi: Cetak struk shift individual
+          receiptData = await fetchShiftReceipt(response.data.id)
+        }
+
+        const lines = receiptData?.receipt_lines || receiptData?.data?.receipt_lines
+        if (lines && lines.length > 0) {
+          await printer.printShiftReceipt(lines)
         }
       } catch (err) {
         console.error('Gagal cetak struk shift otomatis', err)

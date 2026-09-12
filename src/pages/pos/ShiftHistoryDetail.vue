@@ -89,8 +89,9 @@ const printCurrentShift = async () => {
       receiptData = await fetchShiftReceipt(activeTab.value)
     }
     
-    if (receiptData?.data?.receipt_lines) {
-      await printer.printShiftReceipt(receiptData.data.receipt_lines)
+    const lines = receiptData?.receipt_lines || receiptData?.data?.receipt_lines
+    if (lines && lines.length > 0) {
+      await printer.printShiftReceipt(lines)
     } else {
       alert('Gagal mengambil data struk.')
     }
