@@ -40,7 +40,10 @@ const selectedIngredient = computed(() => {
 
 const unifiedOptions = computed(() => {
   const ingOptions = ingredients.value.map(i => ({ label: i.name + ' (Bahan)', value: i.name, rawLabel: i.name, type: 'hpp' }))
-  const catOptions = categories.value.map(c => ({ label: c.label + ' (OPS)', value: c.value, rawLabel: c.label, type: 'ops' }))
+  const catOptions = categories.value.map(c => {
+    const typeLabel = c.type === 'hpp' ? 'Bahan' : 'OPS'
+    return { label: (c.name ?? c.label) + ' (' + typeLabel + ')', value: c.name ?? c.value, rawLabel: c.name ?? c.label, type: c.type || 'ops' }
+  })
   return [...ingOptions, ...catOptions.filter(c => !ingOptions.some(i => i.value === c.value))]
 })
 
@@ -55,7 +58,10 @@ const handleCreateNew = (payload) => {
 }
 
 const totalExpenses = computed(() => {
-  return expenses.value.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0)
+  const list = filterType.value === 'all'
+    ? expenses.value
+    : expenses.value.filter(e => e.type === filterType.value)
+  return list.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0)
 })
 
 const amountPreview = computed(() => {
@@ -69,6 +75,7 @@ const isValid = computed(() => {
 })
 
 const filterSearch = ref('')
+const filterType = ref('all') // 'all' | 'ops' | 'hpp'
 const sortBy = ref('time_desc')
 const showFilters = ref(false)
 
@@ -78,6 +85,10 @@ const filteredExpenses = computed(() => {
   if (filterSearch.value) {
     const q = filterSearch.value.toLowerCase()
     list = list.filter(e => e.category.toLowerCase().includes(q))
+  }
+
+  if (filterType.value !== 'all') {
+    list = list.filter(e => e.type === filterType.value)
   }
   
   list.sort((a, b) => {
@@ -101,12 +112,18 @@ const loadData = async () => {
       fetchCriticalIngredients(),
     ])
     expenses.value = expensesData
-    categories.value = categoriesData.map((c) => ({ label: c, value: c }))
+    // categoriesData sekarang array of {name, type}
+    categories.value = categoriesData.map((c) => ({
+      label: c.name ?? c,
+      value: c.name ?? c,
+      name: c.name ?? c,
+      type: c.type ?? 'ops',
+    }))
     ingredients.value = ingredientsData
 
     // Cache ke IDB untuk offline
     try {
-      await idbSet('expense-categories', categoriesData)
+      await idbSet('expense-categories', categoriesData) // {name, type}[]
       await idbSet('expense-ingredients', JSON.parse(JSON.stringify(ingredientsData)))
     } catch { /* silent */ }
   } catch (err) {
@@ -128,7 +145,7 @@ const loadData = async () => {
         // Load kategori & bahan baku dari IDB cache
         const cachedCategories = await idbGet('expense-categories')
         const cachedIngredients = await idbGet('expense-ingredients')
-        if (cachedCategories) categories.value = cachedCategories.map(c => ({ label: c, value: c }))
+        if (cachedCategories) categories.value = cachedCategories.map(c => ({ label: c.name ?? c, value: c.name ?? c, name: c.name ?? c, type: c.type ?? 'ops' }))
         if (cachedIngredients) ingredients.value = cachedIngredients
       } catch { /* silent */ }
       error.value = ''
@@ -401,6 +418,20 @@ onMounted(() => {
           </div>
 
           <div class="border-b border-slate-100 p-3 flex flex-col gap-3 bg-white">
+            <!-- Filter Tipe: Semua / Bahan / OPS -->
+            <div class="flex gap-1.5">
+              <button
+                v-for="tab in [{label: 'Semua', value: 'all'}, {label: 'Bahan', value: 'hpp'}, {label: 'OPS', value: 'ops'}]"
+                :key="tab.value"
+                @click="filterType = tab.value"
+                :class="[
+                  'flex-1 rounded-lg py-1.5 text-[10px] font-bold uppercase tracking-wide transition',
+                  filterType === tab.value
+                    ? (tab.value === 'hpp' ? 'bg-amber-100 text-amber-700' : tab.value === 'ops' ? 'bg-purple-100 text-purple-700' : 'bg-slate-200 text-slate-700')
+                    : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
+                ]"
+              >{{ tab.label }}</button>
+            </div>
             <div class="flex gap-2">
               <div class="relative flex-1">
                 <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
