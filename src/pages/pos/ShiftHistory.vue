@@ -145,6 +145,11 @@ onMounted(() => {
             <div>
               <p class="text-[9px] md:text-xs font-bold uppercase text-slate-400">Total Pendapatan</p>
               <p class="text-xs md:text-sm font-black text-emerald-600">{{ formatRupiah(shift.total_revenue) }}</p>
+              <div class="flex gap-2 mt-0.5">
+                <span class="text-[8px] font-medium text-slate-400">Tunai: <span class="text-slate-600 font-bold">{{ formatRupiah(shift.cash_revenue || 0) }}</span></span>
+                <span class="text-[8px] text-slate-300">|</span>
+                <span class="text-[8px] font-medium text-slate-400">QRIS: <span class="text-blue-500 font-bold">{{ formatRupiah(shift.qris_revenue || 0) }}</span></span>
+              </div>
             </div>
             <div class="flex items-center gap-2">
               <button @click="(e) => printDaily(shift.date, e)" :disabled="isPrinting === shift.date" class="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50 shrink-0" title="Print Struk Harian">

@@ -1,14 +1,14 @@
 import axios from 'axios'
 
-const TOKEN_KEY = 'token'
+// Key harus sinkron dengan auth.store.js
+const TOKEN_KEY = 'pos_token'
+
 
 function withOfflineStore(callback) {
   import('@/stores/offline.store').then(({ useOfflineStore }) => {
     callback(useOfflineStore())
   })
 }
-
-console.log('ENV:', import.meta.env.VITE_API_URL)
 
 const client = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api',
@@ -19,7 +19,6 @@ const client = axios.create({
   timeout: 30000,
 })
 
-console.log('BASE URL:', client.defaults.baseURL)
 
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem(TOKEN_KEY)
@@ -38,7 +37,7 @@ client.interceptors.response.use(
     })
 
     if (response.data && response.data.message === 'Tidak ada shift aktif.') {
-      localStorage.removeItem('shift')
+      localStorage.removeItem('pos_shift')
       import('@/stores/auth.store').then(({ useAuthStore }) => {
         const authStore = useAuthStore()
         authStore.shift = null
@@ -57,8 +56,8 @@ client.interceptors.response.use(
 
     if (error.response?.status === 401) {
       localStorage.removeItem(TOKEN_KEY)
-      localStorage.removeItem('user')
-      localStorage.removeItem('shift')
+      localStorage.removeItem('pos_user')
+      localStorage.removeItem('pos_shift')
       if (window.location.pathname !== '/login') {
         window.location.href = '/login'
       }
@@ -69,7 +68,7 @@ client.interceptors.response.use(
       if (errors.shift_id) {
         const shiftErrors = errors.shift_id.join(' ').toLowerCase()
         if (shiftErrors.includes('sudah ditutup') || shiftErrors.includes('tidak ditemukan') || shiftErrors.includes('bukan milik kasir')) {
-          localStorage.removeItem('shift')
+          localStorage.removeItem('pos_shift')
           import('@/stores/auth.store').then(({ useAuthStore }) => {
             const authStore = useAuthStore()
             authStore.shift = null

@@ -4,9 +4,10 @@ import * as authApi from '@/api/auth'
 import * as shiftsApi from '@/api/shifts'
 import { db } from '@/utils/db'
 
-const TOKEN_KEY = 'token'
-const USER_KEY = 'user'
-const SHIFT_KEY = 'shift'
+const TOKEN_KEY = 'pos_token'
+const USER_KEY = 'pos_user'
+const SHIFT_KEY = 'pos_shift'
+
 
 const POS_ROLES = ['cashier', 'admin', 'manager']
 
