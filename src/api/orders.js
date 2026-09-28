@@ -1,8 +1,23 @@
 import client from './client'
 
-export async function createOrder(payload) {
-  const { data } = await client.post('/pos/orders', payload)
+export async function createOrder(payload, options = {}) {
+  const headers = {}
+  const idempotencyKey = options.idempotencyKey || payload.idempotency_key
+  if (idempotencyKey) {
+    headers['X-Idempotency-Key'] = idempotencyKey
+  }
+  const { data } = await client.post('/pos/orders', payload, { headers })
   return data.data
+}
+
+export async function fetchOrderByIdempotency(key) {
+  try {
+    const { data } = await client.get(`/pos/orders/by-idempotency/${key}`)
+    return data.data
+  } catch (err) {
+    if (err?.response?.status === 404) return null
+    throw err
+  }
 }
 
 export async function fetchOrders(params) {

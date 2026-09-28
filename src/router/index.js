@@ -42,6 +42,21 @@ const routes = [
         component: () => import('@/pages/pos/Expenses.vue'),
       },
       {
+        path: 'pos/bookings',
+        name: 'pos-bookings',
+        component: () => import('@/pages/pos/Bookings.vue'),
+      },
+      {
+        path: 'pos/bookings/create',
+        name: 'pos-bookings-create',
+        component: () => import('@/pages/pos/BookingCreate.vue'),
+      },
+      {
+        path: 'pos/bookings/:id',
+        name: 'pos-bookings-detail',
+        component: () => import('@/pages/pos/BookingDetail.vue'),
+      },
+      {
         path: 'pos/history',
         name: 'pos-history',
         component: () => import('@/pages/pos/History.vue'),

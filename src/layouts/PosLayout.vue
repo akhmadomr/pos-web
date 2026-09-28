@@ -80,13 +80,17 @@ const isShiftEndingSoon = computed(() => {
 
 const navItems = [
   { label: 'Kasir', path: '/pos', icon: 'pi-shopping-bag' },
+  { label: 'Booking', path: '/pos/bookings', icon: 'pi-calendar' },
   { label: 'Pengeluaran', path: '/pos/expenses', icon: 'pi-money-bill' },
   { label: 'Stok Outlet', path: '/pos/stock-opnames', icon: 'pi-box' },
   { label: 'Riwayat Pesanan', path: '/pos/history', icon: 'pi-history' },
   { label: 'Riwayat Shift', path: '/pos/shifts/history', icon: 'pi-calendar-clock' },
 ]
 
-const isActive = (path) => route.path === path
+const isActive = (path) => {
+  if (path === '/pos') return route.path === '/pos'
+  return route.path === path || route.path.startsWith(path + '/')
+}
 
 const handleLogout = async () => {
   await authStore.logout()

@@ -115,15 +115,35 @@ async function syncCloseShift(item) {
 }
 
 async function syncOrder(item) {
+  // Cek apakah transaksi offline ini sudah dibatalkan oleh kasir sebelum sempat tersinkronisasi
+  if (item.local_ref_id) {
+    const local = await db.offline_orders.get(Number(item.local_ref_id))
+    if (local && local.sync_status === 'cancelled') {
+      return
+    }
+  }
+
   const { orderPayload, methodData } = item.payload
-  const order = await ordersApi.createOrder(orderPayload)
+  let order = null
+
+  // Cek deduplikasi: apakah order dengan idempotency key ini sudah berhasil dibuat di server
+  if (orderPayload?.idempotency_key) {
+    order = await ordersApi.fetchOrderByIdempotency(orderPayload.idempotency_key)
+  }
+
+  if (!order) {
+    order = await ordersApi.createOrder(orderPayload)
+  }
+
   if (order?.id) {
-    await paymentsApi.createPayment({
-      order_id: order.id,
-      payment_method: methodData.payment_method,
-      amount: methodData.amount,
-      reference_number: methodData.reference_number ?? null,
-    })
+    if (order.payment_status !== 'paid') {
+      await paymentsApi.createPayment({
+        order_id: order.id,
+        payment_method: methodData.payment_method,
+        amount: methodData.amount,
+        reference_number: methodData.reference_number ?? null,
+      })
+    }
     // Tandai offline order sebagai synced
     if (item.local_ref_id) {
       await db.offline_orders.update(Number(item.local_ref_id), { sync_status: 'synced', server_order_id: order.id })

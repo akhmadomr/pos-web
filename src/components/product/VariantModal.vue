@@ -247,21 +247,29 @@ const handleClose = () => emit('close')
                 <div class="flex items-center gap-3">
                   <button
                     type="button"
-                    class="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-lg font-bold shadow ring-1 ring-slate-200"
+                    class="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-lg font-bold shadow ring-1 ring-slate-200 active:scale-95 transition"
                     @click="quantity = Math.max(1, quantity - 1)"
                   >
                     −
                   </button>
-                  <span class="min-w-[2rem] text-center text-xl font-black">{{ quantity }}</span>
+                  <input
+                    type="number"
+                    min="1"
+                    :value="quantity"
+                    @input="e => { const v = parseInt(e.target.value); quantity = (isNaN(v) || v < 1) ? 1 : v }"
+                    @focus="e => e.target.select()"
+                    class="w-16 text-center text-xl font-black bg-white rounded-xl border border-slate-200 py-1.5 focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
                   <button
                     type="button"
-                    class="flex h-10 w-10 items-center justify-center rounded-xl bg-merchant-primary text-lg font-bold text-white shadow"
+                    class="flex h-10 w-10 items-center justify-center rounded-xl bg-merchant-primary text-lg font-bold text-white shadow active:scale-95 transition"
                     @click="quantity += 1"
                   >
                     +
                   </button>
                 </div>
               </div>
+
             </div>
 
             <div class="border-t border-slate-100 bg-slate-50/80 p-4 sm:p-6">

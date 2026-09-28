@@ -30,6 +30,14 @@ watch(
 
 const lineTotal = () =>
   (Number(String(props.item.unit_price || 0).replace(/[^\d.-]/g, '')) + Number(String(props.item.addons_price || 0).replace(/[^\d.-]/g, ''))) * (Number(props.item.quantity) || 1)
+const handleQtyChange = (e) => {
+  const val = parseInt(e.target.value, 10)
+  if (isNaN(val) || val < 1) {
+    emit('update-qty', props.index, 1)
+  } else {
+    emit('update-qty', props.index, val)
+  }
+}
 </script>
 
 <template>
@@ -78,7 +86,14 @@ const lineTotal = () =>
         >
           −
         </button>
-        <span class="min-w-[1.25rem] md:min-w-[1.5rem] text-center text-sm md:text-base font-black tabular-nums">{{ item.quantity }}</span>
+        <input
+          type="number"
+          min="1"
+          class="w-12 md:w-14 h-7 md:h-8 text-center text-sm md:text-base font-black tabular-nums border border-slate-200 rounded-md md:rounded-lg bg-slate-50 focus:bg-white focus:border-merchant-primary focus:ring-1 focus:ring-merchant-primary outline-none transition"
+          :value="item.quantity"
+          @focus="$event.target.select()"
+          @change="handleQtyChange"
+        />
         <button
           type="button"
           class="flex h-7 w-7 md:h-8 md:w-8 items-center justify-center rounded-md md:rounded-lg bg-merchant-primary text-xs md:text-sm font-bold text-white hover:bg-merchant-primary/90"
