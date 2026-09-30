@@ -38,6 +38,10 @@ const paymentMethods = [
 ]
 
 const nameError = ref(false)
+const activeIdempotencyKey = ref(null)
+const pendingOrderData = ref(null)
+const showNetworkModal = ref(false)
+const networkErrorMsg = ref('')
 
 const canProceedStep1 = computed(() => {
   return cartStore.customerName?.trim().length > 0
@@ -89,6 +93,10 @@ const loadTables = async () => {
 const resetModal = () => {
   step.value = 1
   payment.resetPayment()
+  activeIdempotencyKey.value = null
+  pendingOrderData.value = null
+  showNetworkModal.value = false
+  networkErrorMsg.value = ''
 }
 
 watch(
@@ -138,14 +146,51 @@ const setOrderType = (type) => {
   }
 }
 
+const proceedOfflineOrder = async () => {
+  if (!pendingOrderData.value) return
+  payment.isProcessing.value = true
+  try {
+    const { payload, methodData, orderTotal, items } = pendingOrderData.value
+    const offlineResult = await orderStore.saveOfflineOrder(payload, methodData, orderTotal, items)
+    showNetworkModal.value = false
+    emit('paid', {
+      order: offlineResult.order,
+      payment: offlineResult.payment,
+      receipt_data: offlineResult.payment.receipt_data,
+      change_amount: offlineResult.payment.change_amount,
+    })
+  } catch (offlineErr) {
+    console.error('Offline save failed:', offlineErr)
+    payment.error.value = 'Gagal menyimpan pesanan offline: ' + (offlineErr.message || offlineErr)
+    showNetworkModal.value = false
+  } finally {
+    payment.isProcessing.value = false
+  }
+}
+
+const retryOnlineOrder = async () => {
+  showNetworkModal.value = false
+  await handleConfirm()
+}
+
 const handleConfirm = async () => {
   if (!canConfirm.value) return
 
+  // Inisialisasi idempotency key untuk sesi transaksi ini jika belum ada (akan dipertahankan saat retry)
+  if (!activeIdempotencyKey.value) {
+    activeIdempotencyKey.value = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : 'kpx-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9)
+  }
+
   payment.isProcessing.value = true
   payment.error.value = null
+  showNetworkModal.value = false
 
   try {
     const payload = cartStore.buildOrderPayload(authStore.outletId, authStore.shift?.id)
+    payload.idempotency_key = activeIdempotencyKey.value
+
     const amount = currentMethod.value === 'cash' ? cashReceivedNum.value : cartStore.total
     const methodData = {
       payment_method: currentMethod.value,
@@ -153,10 +198,17 @@ const handleConfirm = async () => {
       reference_number: payment.referenceNumber.value || null,
     }
 
+    // Simpan snapshot untuk kebutuhan retry atau switch ke offline mode
+    pendingOrderData.value = {
+      payload,
+      methodData,
+      orderTotal: cartStore.total,
+      items: cartStore.items,
+    }
+
     if (cartStore.isEditingOrder) {
       if (cartStore.editingOriginalOrder?.is_offline) {
         // Jika yang diedit adalah transaksi offline yang belum tersinkronisasi
-        // Batalkan yang lama secara lokal, lalu buat pesanan offline baru sebagai pengganti
         const { useOrderStore } = await import('@/stores/order.store')
         const orderStore = useOrderStore()
         await orderStore.cancelOrder(cartStore.editingOrderId)
@@ -194,18 +246,12 @@ const handleConfirm = async () => {
     }
 
     if (!navigator.onLine) {
-      // PROSES OFFLINE
-      const offlineResult = await orderStore.saveOfflineOrder(payload, methodData, cartStore.total, cartStore.items)
-      emit('paid', {
-        order: offlineResult.order,
-        payment: offlineResult.payment,
-        receipt_data: offlineResult.payment.receipt_data,
-        change_amount: offlineResult.payment.change_amount,
-      })
+      // Perangkat offline sejak awal
+      await proceedOfflineOrder()
       return
     }
 
-    const order = await createOrder(payload)
+    const order = await createOrder(payload, { idempotencyKey: activeIdempotencyKey.value })
     const result = await payment.processPayment(order.id, methodData, cartStore.total)
 
     emit('paid', {
@@ -220,25 +266,14 @@ const handleConfirm = async () => {
       err.message === 'Network Error' || 
       err.name === 'TypeError' ||
       err.code === 'ECONNABORTED' ||
+      err.code === 'ERR_NETWORK' ||
       (err.response && err.response.status >= 500)
 
     if (isNetworkOrServerError) {
-       try {
-         // Coba simpan sebagai offline fallback jika gagal di tengah jalan
-         const payload = cartStore.buildOrderPayload(authStore.outletId, authStore.shift?.id)
-         const amount = currentMethod.value === 'cash' ? cashReceivedNum.value : cartStore.total
-         const methodData = { payment_method: currentMethod.value, amount, reference_number: payment.referenceNumber.value || null }
-         const offlineResult = await orderStore.saveOfflineOrder(payload, methodData, cartStore.total, cartStore.items)
-         emit('paid', {
-           order: offlineResult.order,
-           payment: offlineResult.payment,
-           receipt_data: offlineResult.payment.receipt_data,
-           change_amount: offlineResult.payment.change_amount,
-         })
-       } catch (offlineErr) {
-         console.error('Offline save failed:', offlineErr)
-         payment.error.value = 'Offline Error: ' + (offlineErr.message || offlineErr)
-       }
+      networkErrorMsg.value = !navigator.onLine
+        ? 'Perangkat Anda sedang tidak terhubung ke jaringan internet.'
+        : (err.response?.data?.message || err.message || 'Tidak dapat terhubung ke server kasir.')
+      showNetworkModal.value = true
     } else {
       // Tampilkan error ke UI jika bukan masalah jaringan (misal validasi backend)
       const errorMsg = err.response?.data?.message || err.message || 'Gagal memproses pesanan.'
@@ -433,6 +468,71 @@ const handleConfirm = async () => {
               </AppButton>
             </div>
           </footer>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Modal Dialog Gangguan Jaringan (Offline Manual Confirmation) -->
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="opacity-0 scale-95"
+      enter-to-class="opacity-100 scale-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="opacity-100 scale-100"
+      leave-to-class="opacity-0 scale-95"
+    >
+      <div
+        v-if="showNetworkModal"
+        class="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+      >
+        <div class="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 space-y-5 text-center">
+          <div class="h-16 w-16 mx-auto rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200 shadow-inner">
+            <i class="pi pi-wifi text-3xl" />
+          </div>
+
+          <div>
+            <h3 class="text-xl font-black text-slate-900">Koneksi Bermasalah</h3>
+            <p class="text-xs md:text-sm text-slate-500 mt-1.5 leading-relaxed">
+              {{ networkErrorMsg || 'Gagal terhubung ke server. Pesanan belum dapat dipastikan tersimpan online.' }}
+            </p>
+          </div>
+
+          <div class="rounded-xl bg-amber-50/70 border border-amber-200/70 p-3 text-left flex items-start gap-2.5 text-xs text-amber-800">
+            <i class="pi pi-info-circle text-amber-600 text-sm mt-0.5 shrink-0" />
+            <p class="leading-snug">
+              Jika Anda memilih <strong>Mode Offline</strong>, pesanan akan disimpan di perangkat ini dan otomatis disinkronkan tanpa membuat transaksi ganda.
+            </p>
+          </div>
+
+          <div class="space-y-2.5 pt-1">
+            <button
+              type="button"
+              class="w-full py-3.5 px-4 rounded-xl font-black text-sm bg-merchant-primary text-white hover:brightness-110 active:scale-[0.99] transition shadow-md flex items-center justify-center gap-2"
+              :disabled="isProcessing"
+              @click="retryOnlineOrder"
+            >
+              <i class="pi pi-refresh" :class="{ 'animate-spin': isProcessing }" />
+              Coba Lagi (Online)
+            </button>
+
+            <button
+              type="button"
+              class="w-full py-3.5 px-4 rounded-xl font-bold text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 active:scale-[0.99] transition border border-slate-200 flex items-center justify-center gap-2"
+              :disabled="isProcessing"
+              @click="proceedOfflineOrder"
+            >
+              <i class="pi pi-cloud-download" />
+              Lanjut Simpan Mode Offline
+            </button>
+
+            <button
+              type="button"
+              class="w-full py-2 text-xs font-bold text-slate-400 hover:text-slate-600 transition"
+              @click="showNetworkModal = false"
+            >
+              Kembali ke Pembayaran
+            </button>
+          </div>
         </div>
       </div>
     </Transition>

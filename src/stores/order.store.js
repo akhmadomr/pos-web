@@ -140,6 +140,9 @@ export const useOrderStore = defineStore('order', () => {
       if (order?.is_offline) {
         // batalkan transaksi offline
         await db.offline_orders.update(id, { sync_status: 'cancelled' })
+        try {
+          await db.sync_queue.where('local_ref_id').equals(id).modify({ status: 'cancelled' })
+        } catch { /* silent */ }
         const idx = orders.value.findIndex((o) => o.id === id)
         if (idx >= 0) orders.value[idx].status = 'cancelled'
         return { success: true }
@@ -176,9 +179,11 @@ export const useOrderStore = defineStore('order', () => {
     
     // Injeksi order_number ke payload agar server menggunakan nomor ini
     payload.order_number = orderNumber
+    payload.idempotency_key = payload.idempotency_key || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'offline-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9))
 
     const offlineOrder = {
       order_number: orderNumber,
+      idempotency_key: payload.idempotency_key,
       timestamp: today.toISOString(),
       payload,
       methodData,

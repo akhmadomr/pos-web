@@ -1,6 +1,6 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import AppAlert from '@/components/common/AppAlert.vue'
 import PaymentModal from '@/components/payment/PaymentModal.vue'
 import PaymentSuccess from '@/components/payment/PaymentSuccess.vue'
@@ -22,6 +22,9 @@ const cartStore = useCartStore()
 const payment = usePayment()
 const printer = usePrinter()
 const router = useRouter()
+const route = useRoute()
+
+const isBookingMode = computed(() => route.query.mode === 'booking')
 
 const selectedCategory = ref(null)
 const searchQuery = ref('')
@@ -73,8 +76,127 @@ const handleVariantAdd = ({ product, variantSelections, addonIds, quantity, note
 
 const handleCheckout = () => {
   if (!cartStore.items.length) return
+  if (isBookingMode.value) {
+    saveToBooking()
+    return
+  }
   showPaymentModal.value = true
 }
+
+const restoreRegularCart = () => {
+  const backup = sessionStorage.getItem('kopirex_regular_cart_backup')
+  if (backup) {
+    try {
+      cartStore.items = JSON.parse(backup)
+    } catch (e) {
+      cartStore.clearCart()
+    }
+    sessionStorage.removeItem('kopirex_regular_cart_backup')
+  } else {
+    cartStore.clearCart()
+  }
+}
+
+const initBookingMode = () => {
+  if (isBookingMode.value) {
+    // 1. Backup keranjang reguler kasir jika belum dibackup
+    if (!sessionStorage.getItem('kopirex_regular_cart_backup')) {
+      sessionStorage.setItem('kopirex_regular_cart_backup', JSON.stringify(cartStore.items))
+    }
+
+    // 2. Muat draft item booking ke cartStore
+    const rawDraft = localStorage.getItem('kopirex_pos_booking_draft')
+    if (rawDraft) {
+      try {
+        const draft = JSON.parse(rawDraft)
+        if (Array.isArray(draft.items) && draft.items.length > 0) {
+          cartStore.items = draft.items.map((item) => ({
+            id: item.id || crypto.randomUUID(),
+            product_id: item.product_id,
+            product_name: item.product_name,
+            unit_price: Number(item.unit_price) || 0,
+            addons_price: 0,
+            quantity: Number(item.quantity) || 1,
+            variant_label: item.variant_label || null,
+            addons_label: null,
+            notes: item.notes || null,
+            variant_selections: item.variant_selections || {},
+            addon_ids: item.addon_ids || [],
+          }))
+          return
+        }
+      } catch (e) {
+        console.error('Gagal memuat draft booking ke kasir:', e)
+      }
+    }
+    cartStore.items = []
+  }
+}
+
+const cancelBookingMode = () => {
+  restoreRegularCart()
+  router.push('/pos/bookings/create')
+}
+
+const saveToBooking = () => {
+  if (!cartStore.items.length) return
+
+  // 1. Konversi item cart menjadi format item booking
+  const bookingItems = cartStore.items.map((item) => {
+    const unitPrice = (Number(item.unit_price) || 0) + (Number(item.addons_price) || 0)
+    const variantParts = [item.variant_label, item.addons_label].filter(Boolean)
+    const variantLabel = variantParts.length > 0 ? variantParts.join(', ') : null
+
+    return {
+      id: item.id || crypto.randomUUID(),
+      product_id: item.product_id,
+      product_name: item.product_name,
+      variant_label: variantLabel,
+      unit_price: unitPrice,
+      quantity: Number(item.quantity) || 1,
+      notes: item.notes || '',
+      variant_selections: item.variant_selections || {},
+      addon_ids: item.addon_ids || [],
+    }
+  })
+
+  // 2. Simpan kembali ke draft booking di localStorage
+  const rawDraft = localStorage.getItem('kopirex_pos_booking_draft')
+  let draft = {}
+  if (rawDraft) {
+    try {
+      draft = JSON.parse(rawDraft)
+    } catch (e) {}
+  }
+  draft.items = bookingItems
+
+  // Perbarui total normal dan custom_total jika kasir belum menentukan custom total sendiri
+  const newNormalTotal = bookingItems.reduce(
+    (sum, it) => sum + Number(it.unit_price) * Number(it.quantity),
+    0,
+  )
+  if (!draft.isCustomTotalTouched) {
+    draft.custom_total = newNormalTotal
+  }
+  localStorage.setItem('kopirex_pos_booking_draft', JSON.stringify(draft))
+
+  // 3. Kembalikan keranjang kasir reguler
+  restoreRegularCart()
+
+  // 4. Redirect kembali ke form booking
+  router.push('/pos/bookings/create')
+}
+
+watch(
+  () => route.query.mode,
+  (newMode, oldMode) => {
+    if (newMode === 'booking') {
+      initBookingMode()
+    } else if (oldMode === 'booking') {
+      restoreRegularCart()
+    }
+  },
+)
 
 const handlePaid = async (payload) => {
   showPaymentModal.value = false
@@ -112,7 +234,16 @@ const handlePaymentDone = () => {
 }
 
 onMounted(() => {
+  if (isBookingMode.value) {
+    initBookingMode()
+  }
   productStore.fetchProducts(authStore.outletId ?? authStore.user?.outlet_id)
+})
+
+onBeforeUnmount(() => {
+  if (isBookingMode.value) {
+    restoreRegularCart()
+  }
 })
 </script>
 
@@ -137,6 +268,32 @@ onMounted(() => {
       <button @click="cartStore.clearCart()" class="text-xs font-bold text-amber-700 hover:text-amber-900 underline">Batalkan Edit</button>
     </div>
 
+    <!-- Booking Mode Top Banner -->
+    <div
+      v-if="isBookingMode"
+      class="mb-3 shrink-0 rounded-2xl border border-merchant-primary bg-merchant-primary p-4 text-white shadow-lg shadow-merchant-primary/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+    >
+      <div class="flex items-center gap-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <h3 class="font-black text-sm sm:text-base">Pilih Menu untuk Pesanan Booking</h3>
+          </div>
+          <p class="text-xs text-white/80 mt-0.5">
+            Pilih produk beserta varian &amp; add-on di kasir
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+        <button
+          type="button"
+          @click="cancelBookingMode"
+          class="rounded-xl bg-white/10 hover:bg-white/20 border border-white/25 px-3.5 py-2 text-xs font-bold text-white transition active:scale-95"
+        >
+          Batal
+        </button>
+      </div>
+    </div>
+
     <!-- Layout Grid: Mobile portrait (< 640px) = 1 col, Tablet/Desktop (>= 640px) = side-by-side -->
     <div class="grid min-h-0 flex-1 gap-3 pb-20
       sm:grid-cols-12 sm:gap-4 sm:pb-0
@@ -159,7 +316,11 @@ onMounted(() => {
 
       <!-- Keranjang Samping: SM+, Landscape Tablet + Desktop -->
       <section class="hidden min-h-0 sm:flex sm:flex-col sm:col-span-5 md:col-span-5 lg:col-span-4 xl:col-span-4">
-        <OrderCart class="h-full" @checkout="handleCheckout" />
+        <OrderCart
+          class="h-full"
+          :is-booking-mode="isBookingMode"
+          @checkout="handleCheckout"
+        />
       </section>
     </div>
 
@@ -188,9 +349,10 @@ onMounted(() => {
           <button 
             v-if="!isCartExpanded"
             @click.stop="handleCheckout" 
-            class="rounded-xl bg-merchant-primary px-6 py-3 text-sm font-bold text-white shadow-lg shadow-merchant-primary/30"
+            class="rounded-xl px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-lg transition active:scale-95"
+            :class="isBookingMode ? 'bg-merchant-primary hover:bg-merchant-primary/90 shadow-merchant-primary/30' : 'bg-merchant-primary shadow-merchant-primary/30'"
           >
-            Checkout
+            {{ isBookingMode ? 'Simpan' : 'Checkout' }}
           </button>
           <div class="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500">
             <i class="pi" :class="isCartExpanded ? 'pi-chevron-down' : 'pi-chevron-up'" />
@@ -199,7 +361,11 @@ onMounted(() => {
       </div>
 
       <div v-show="isCartExpanded" class="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-50/50">
-        <OrderCart class="h-full !rounded-none !border-none !shadow-none" @checkout="handleCheckout" />
+        <OrderCart
+          class="h-full !rounded-none !border-none !shadow-none"
+          :is-booking-mode="isBookingMode"
+          @checkout="handleCheckout"
+        />
       </div>
     </div>
 

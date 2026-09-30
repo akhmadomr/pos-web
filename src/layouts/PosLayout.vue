@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import AppButton from '@/components/common/AppButton.vue'
@@ -7,12 +7,14 @@ import CloseShiftModal from '@/components/shift/CloseShiftModal.vue'
 import ShiftSummary from '@/components/shift/ShiftSummary.vue'
 import ProfileModal from '@/components/profile/ProfileModal.vue'
 import LowStockBanner from '@/components/layout/LowStockBanner.vue'
+import ActiveBookingBanner from '@/components/layout/ActiveBookingBanner.vue'
 import NotificationBell from '@/components/layout/NotificationBell.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { useNotificationStore } from '@/stores/notification.store'
 import { usePrinter } from '@/composables/usePrinter'
 import { useSettingsStore } from '@/stores/settings.store'
 import { useOfflineStore } from '@/stores/offline.store'
+import { useBookingStore } from '@/stores/booking.store'
 import logoUrl from '@/assets/logo kopirex-01.png'
 
 const router = useRouter()
@@ -21,6 +23,7 @@ const authStore = useAuthStore()
 const notifStore = useNotificationStore()
 const settingsStore = useSettingsStore()
 const offlineStore = useOfflineStore()
+const bookingStore = useBookingStore()
 const printer = usePrinter()
 
 // Gunakan offlineStore.isOffline agar konsisten dengan AppOfflineBanner
@@ -80,13 +83,17 @@ const isShiftEndingSoon = computed(() => {
 
 const navItems = [
   { label: 'Kasir', path: '/pos', icon: 'pi-shopping-bag' },
+  { label: 'Booking', path: '/pos/bookings', icon: 'pi-calendar' },
   { label: 'Pengeluaran', path: '/pos/expenses', icon: 'pi-money-bill' },
   { label: 'Stok Outlet', path: '/pos/stock-opnames', icon: 'pi-box' },
   { label: 'Riwayat Pesanan', path: '/pos/history', icon: 'pi-history' },
   { label: 'Riwayat Shift', path: '/pos/shifts/history', icon: 'pi-calendar-clock' },
 ]
 
-const isActive = (path) => route.path === path
+const isActive = (path) => {
+  if (path === '/pos') return route.path === '/pos'
+  return route.path === path || route.path.startsWith(path + '/')
+}
 
 const handleLogout = async () => {
   await authStore.logout()
@@ -97,14 +104,21 @@ const onShiftClosed = () => {
   shiftSummaryRef.value?.refresh?.()
 }
 
+let bookingTimer = null
+
 onMounted(() => {
   settingsStore.load()
   printer.autoConnectBluetooth()
   notifStore.fetchNotifications()
+  bookingStore.fetchCounts()
   
   clockTimer = window.setInterval(() => {
     now.value = dayjs()
   }, 1000)
+
+  bookingTimer = window.setInterval(() => {
+    bookingStore.fetchCounts()
+  }, 20000)
 
   // Polling dihapus karena spamming connect() di background menyebabkan Android Bluetooth stack crash (NetworkError).
   // Sebagai gantinya, koneksi otomatis dipanggil sekali saat load, dan dipicu manual lewat ikon print.
@@ -112,11 +126,15 @@ onMounted(() => {
   document.addEventListener('fullscreenchange', () => {
     isFullscreen.value = !!document.fullscreenElement
   })
+})
 
+watch(() => route.path, () => {
+  bookingStore.fetchCounts()
 })
 
 onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer)
+  if (bookingTimer) clearInterval(bookingTimer)
 })
 </script>
 
@@ -147,12 +165,20 @@ onUnmounted(() => {
           v-for="item in navItems"
           :key="item.path"
           :to="item.path"
-          class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition"
+          class="flex items-center justify-between rounded-xl px-4 py-3 text-sm font-bold transition"
           :class="isActive(item.path) ? 'bg-merchant-primary/10 text-merchant-primary' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'"
           @click="isSidebarOpen = false"
         >
-          <i :class="['pi', item.icon]" />
-          {{ item.label }}
+          <div class="flex items-center gap-3">
+            <i :class="['pi', item.icon]" />
+            <span>{{ item.label }}</span>
+          </div>
+          <span
+            v-if="item.path === '/pos/bookings' && bookingStore.activeCount > 0"
+            class="flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white shadow-sm"
+          >
+            {{ bookingStore.activeCount > 99 ? '99+' : bookingStore.activeCount }}
+          </span>
         </router-link>
         
         <div class="my-4 border-t border-slate-100" />
@@ -220,10 +246,17 @@ onUnmounted(() => {
           
           <!-- LEFT: Logo (Trigger Sidebar) -->
           <button 
-            class="flex shrink-0 items-center justify-center rounded-xl p-1 transition hover:bg-slate-50 lg:p-2"
+            class="relative flex shrink-0 items-center justify-center rounded-xl p-1 transition hover:bg-slate-50 lg:p-2"
             @click="isSidebarOpen = true"
+            title="Buka Menu"
           >
             <img :src="logoUrl" alt="Kopirex" class="h-8 w-auto lg:h-10" />
+            <span
+              v-if="bookingStore.activeCount > 0"
+              class="absolute -top-1 -right-1 flex h-4 min-w-4 sm:h-5 sm:min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] sm:text-[10px] font-bold text-white shadow-sm ring-2 ring-white"
+            >
+              {{ bookingStore.activeCount > 99 ? '99+' : bookingStore.activeCount }}
+            </span>
           </button>
 
           <!-- CENTER: Shift Summary -->
@@ -307,7 +340,7 @@ onUnmounted(() => {
             v-for="item in navItems"
             :key="item.path"
             :to="item.path"
-            class="flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition"
+            class="relative flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition"
             :class="
               isActive(item.path)
                 ? 'border-merchant-primary text-merchant-primary'
@@ -315,7 +348,13 @@ onUnmounted(() => {
             "
           >
             <i :class="['pi', item.icon]" />
-            {{ item.label }}
+            <span>{{ item.label }}</span>
+            <span
+              v-if="item.path === '/pos/bookings' && bookingStore.activeCount > 0"
+              class="ml-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white shadow-sm"
+            >
+              {{ bookingStore.activeCount > 99 ? '99+' : bookingStore.activeCount }}
+            </span>
           </router-link>
         </nav>
       </header>
@@ -336,6 +375,9 @@ onUnmounted(() => {
         </div>
       </div>
       
+      <!-- Active Booking Today Banner -->
+      <ActiveBookingBanner />
+
       <!-- Low Stock Banner -->
       <LowStockBanner v-if="authStore.hasActiveShift" />
 
