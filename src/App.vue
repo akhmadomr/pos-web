@@ -27,9 +27,10 @@ onMounted(async () => {
 
   // Sinkronisasi saat koneksi pulih
   window.addEventListener('online', async () => {
-    offlineStore.setOffline(false)
-    await processQueue()
-    await updatePendingCount()
+    if (!offlineStore.isOffline) {
+      await processQueue()
+      await updatePendingCount()
+    }
   })
 
   // Cek status shift setiap 60 detik (cross-device sync)

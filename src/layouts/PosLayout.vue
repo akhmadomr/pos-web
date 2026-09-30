@@ -28,6 +28,19 @@ const printer = usePrinter()
 
 // Gunakan offlineStore.isOffline agar konsisten dengan AppOfflineBanner
 const isOnline = computed(() => !offlineStore.isOffline)
+
+const handleToggleOfflineMode = async () => {
+  if (offlineStore.isOffline) {
+    await offlineStore.setOffline(false)
+  } else {
+    const confirmSwitch = window.confirm(
+      'Beralih ke Mode Offline?\n\nDalam Mode Offline, transaksi akan disimpan di perangkat ini dan disinkronkan saat Anda kembali ke Mode Online.'
+    )
+    if (confirmSwitch) {
+      await offlineStore.setOffline(true)
+    }
+  }
+}
 const showCloseModal = ref(false)
 const ignoredShiftBannerId = ref(null)
 const shiftSummaryRef = ref(null)
@@ -214,6 +227,22 @@ onUnmounted(() => {
             {{ printer.isConnectingBluetooth.value ? 'Menyambungkan...' : (printer.bluetoothDevice.value ? 'Bluetooth Terhubung' : 'Koneksikan Bluetooth') }}
           </button>
           
+          <button
+            type="button"
+            class="flex w-full items-center justify-between rounded-xl px-4 py-3 text-sm font-bold transition hover:bg-slate-50 cursor-pointer"
+            :class="isOnline ? 'text-emerald-600 bg-emerald-50/50' : 'text-amber-700 bg-amber-50'"
+            @click="handleToggleOfflineMode(); isSidebarOpen = false"
+          >
+            <div class="flex items-center gap-3">
+              <i :class="['pi', isOnline ? 'pi-wifi' : 'pi-wifi-off']" />
+              <span>{{ isOnline ? 'Mode Online' : 'Mode Offline' }}</span>
+            </div>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                  :class="isOnline ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-200 text-amber-800'">
+              Ubah
+            </span>
+          </button>
+
           <div class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-emerald-600">
             <i class="pi pi-check-circle" />
             Shift Aktif
@@ -269,12 +298,15 @@ onUnmounted(() => {
             
             <!-- Status Icons -->
             <div class="flex items-center gap-1 sm:gap-1.5 lg:gap-2 mr-0.5 sm:mr-1">
-              <div class="relative flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full"
-                   :class="isOnline ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400 bg-slate-100'"
-                   title="Status Internet">
-                <i class="pi pi-wifi text-sm lg:text-base" />
-                <div v-if="!isOnline" class="absolute h-0.5 w-5 rotate-45 rounded-full bg-slate-500" />
-              </div>
+              <button
+                type="button"
+                @click="handleToggleOfflineMode"
+                class="relative flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full transition cursor-pointer hover:ring-2 hover:ring-slate-300"
+                :class="isOnline ? 'text-emerald-500 bg-emerald-50 hover:bg-emerald-100' : 'text-amber-700 bg-amber-100 hover:bg-amber-200'"
+                :title="isOnline ? 'Mode Online (Klik untuk beralih ke Mode Offline)' : 'Mode Offline (Klik untuk beralih ke Mode Online)'"
+              >
+                <i class="pi text-sm lg:text-base" :class="isOnline ? 'pi-wifi' : 'pi-wifi-off'" />
+              </button>
               <div class="relative flex h-6 w-6 sm:h-8 sm:w-8 cursor-pointer items-center justify-center rounded-full"
                    :class="(printer.printerOnline.value || printer.bluetoothDevice.value) ? 'text-emerald-500 bg-emerald-50 hover:bg-emerald-100' : 'text-slate-400 bg-slate-100 hover:bg-slate-200'"
                    title="Status Printer (Klik untuk sambungkan manual)"

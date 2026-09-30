@@ -11,6 +11,7 @@ import { usePayment } from '@/composables/usePayment'
 import { useAuthStore } from '@/stores/auth.store'
 import { useCartStore } from '@/stores/cart.store'
 import { useOrderStore } from '@/stores/order.store'
+import { useOfflineStore } from '@/stores/offline.store'
 import { formatRupiah } from '@/utils/currency'
 import client from '@/api/client'
 
@@ -26,6 +27,7 @@ const emit = defineEmits(['close', 'paid'])
 const authStore = useAuthStore()
 const cartStore = useCartStore()
 const orderStore = useOrderStore()
+const offlineStore = useOfflineStore()
 const payment = usePayment()
 
 const step = ref(1)
@@ -245,8 +247,8 @@ const handleConfirm = async () => {
       return
     }
 
-    if (!navigator.onLine) {
-      // Perangkat offline sejak awal
+    if (offlineStore.isOffline || !navigator.onLine) {
+      // Perangkat offline atau mode offline manual aktif
       await proceedOfflineOrder()
       return
     }
