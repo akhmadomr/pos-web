@@ -8,11 +8,18 @@ import AppButton from '@/components/common/AppButton.vue'
 import AppAlert from '@/components/common/AppAlert.vue'
 import { fetchBookings } from '@/api/bookings'
 import { formatRupiah } from '@/utils/currency'
+import { useBookingStore } from '@/stores/booking.store'
+import { usePrinter } from '@/composables/usePrinter'
+import { useSettingsStore } from '@/stores/settings.store'
+import { DEFAULT_RECEIPT_LAYOUT } from '@/utils/receipt'
 
 dayjs.extend(relativeTime)
 dayjs.locale('id')
 
 const router = useRouter()
+const bookingStore = useBookingStore()
+const printer = usePrinter()
+const settingsStore = useSettingsStore()
 
 const activeTab = ref('active') // 'active', 'executed', 'cancelled'
 const search = ref('')
@@ -22,6 +29,7 @@ const alertMessage = ref('')
 const alertTitle = ref('')
 const alertType = ref('success')
 const showAlert = ref(false)
+const printingBookingId = ref(null)
 
 const triggerAlert = (title, message, type = 'success') => {
   alertTitle.value = title
@@ -41,6 +49,9 @@ const loadBookings = async () => {
       search: search.value || undefined,
     })
     bookings.value = res.data?.data || res.data || []
+    if (res.counts) {
+      bookingStore.updateCounts(res.counts)
+    }
   } catch (error) {
     triggerAlert('Gagal Memuat', error.response?.data?.message || 'Gagal memuat data booking', 'error')
   } finally {
@@ -49,6 +60,7 @@ const loadBookings = async () => {
 }
 
 onMounted(() => {
+  settingsStore.load()
   loadBookings()
 })
 
@@ -65,27 +77,25 @@ const onSearchInput = () => {
   }, 400)
 }
 
-const getPaymentBadge = (booking) => {
-  if (booking.status === 'cancelled') {
-    return { label: 'Dibatalkan', class: 'bg-rose-100 text-rose-700 border-rose-200' }
-  }
-  if (booking.paid_amount >= booking.custom_total) {
-    return { label: 'Lunas', class: 'bg-emerald-100 text-emerald-800 border-emerald-200' }
-  }
-  if (booking.paid_amount > 0) {
-    return { label: 'Sebagian (DP)', class: 'bg-amber-100 text-amber-800 border-amber-200' }
-  }
-  return { label: 'Belum Bayar', class: 'bg-slate-100 text-slate-700 border-slate-200' }
+const parseNum = (val) => {
+  if (val === null || val === undefined || val === '') return 0
+  if (typeof val === 'number') return isNaN(val) ? 0 : val
+  const cleaned = String(val).replace(/[^\d.-]/g, '')
+  const num = parseFloat(cleaned)
+  return isNaN(num) ? 0 : num
 }
 
-const getExecutionBadge = (booking) => {
-  if (booking.status === 'executed') {
-    return { label: 'Selesai Dibuat (Stok Terpotong)', class: 'bg-teal-100 text-teal-800 border-teal-200' }
-  }
-  if (booking.status === 'cancelled') {
-    return { label: 'Dibatalkan', class: 'bg-rose-100 text-rose-700 border-rose-200' }
-  }
-  return { label: 'Menunggu Eksekusi', class: 'bg-sky-100 text-sky-800 border-sky-200' }
+const isBookingLunas = (b) => {
+  if (b.status === 'executed') return true
+  const paid = parseNum(b.paid_amount ?? b.total_paid)
+  const total = parseNum(b.custom_total)
+  return total > 0 && paid >= total
+}
+
+const isBookingDP = (b) => {
+  const paid = parseNum(b.paid_amount ?? b.total_paid)
+  const total = parseNum(b.custom_total)
+  return paid > 0 && paid < total
 }
 
 const formatEventDate = (dateStr) => {
@@ -122,29 +132,137 @@ const getWaLink = (phone) => {
   if (clean.startsWith('0')) clean = '62' + clean.slice(1)
   return `https://wa.me/${clean}`
 }
+
+// ================= Cetak Struk Thermal Langsung Dari Card =================
+const handlePrintBookingReceipt = async (b) => {
+  if (printingBookingId.value) return
+  printingBookingId.value = b.id
+  try {
+    let layout = DEFAULT_RECEIPT_LAYOUT
+    try {
+      if (settingsStore.receipt?.layout) {
+        if (typeof settingsStore.receipt.layout === 'string') {
+          layout = JSON.parse(settingsStore.receipt.layout)
+        } else if (Array.isArray(settingsStore.receipt.layout)) {
+          layout = settingsStore.receipt.layout
+        }
+      }
+    } catch (e) {
+      console.error(e)
+    }
+
+    const headerBlocks = []
+    const footerBlocks = []
+    let isHeader = true
+    for (const block of layout) {
+      if (block.type === 'static_order_info' || block.type === 'static_items') {
+        isHeader = false
+        continue
+      }
+      if (block.type === 'static_totals') continue
+      if (isHeader) headerBlocks.push(block)
+      else footerBlocks.push(block)
+    }
+
+    const lines = []
+    let hasHeaderText = false
+    headerBlocks.forEach((block) => {
+      if (block.type === 'text' && block.content) {
+        hasHeaderText = true
+        block.content.split('\n').forEach((txt) => {
+          if (txt.trim()) lines.push({ type: 'center', text: txt.trim(), bold: block.bold || block.size === 'large' })
+        })
+      }
+    })
+    if (!hasHeaderText) lines.push({ type: 'center', text: 'KOPIREX', bold: true })
+
+    lines.push({ type: 'center', text: 'STRUK PESANAN', bold: true })
+    lines.push({ type: 'separator', text: '=' })
+
+    lines.push({ type: 'row', left: 'No. Booking:', right: b.booking_number || '-', bold: true })
+    lines.push({ type: 'row', left: 'Waktu Pesan:', right: dayjs(b.created_at).format('DD/MM/YYYY HH:mm') })
+    lines.push({ type: 'row', left: 'Pemesan:', right: b.customer_name || '-' })
+    if (b.customer_phone) lines.push({ type: 'row', left: 'No. HP/WA:', right: b.customer_phone })
+    lines.push({ type: 'row', left: 'Jadwal Acara:', right: dayjs(b.event_date).format('DD/MM/YYYY') })
+    if (b.event_name) lines.push({ type: 'row', left: 'Nama Acara:', right: b.event_name })
+
+    lines.push({ type: 'separator', text: '-' })
+    lines.push({ type: 'label', text: 'MENU PESANAN:' })
+
+    const finalTotal = parseNum(b.custom_total)
+    const standardTotal = parseNum(b.normal_total)
+    const rawItems = b.items || []
+
+    let accumulatedSubtotal = 0
+    rawItems.forEach((item, idx) => {
+      const isLast = idx === rawItems.length - 1
+      const qty = Number(item.quantity) || 1
+      const name = item.product_name + (item.variant_label ? ` (${item.variant_label})` : '')
+      
+      let itemSubtotal = 0
+      if (finalTotal === standardTotal || standardTotal <= 0) {
+        itemSubtotal = Number(item.subtotal || (qty * Number(item.unit_price)))
+      } else {
+        if (isLast) {
+          itemSubtotal = Math.max(0, finalTotal - accumulatedSubtotal)
+        } else {
+          const itemOriginalSubtotal = Number(item.subtotal || (qty * Number(item.unit_price)))
+          itemSubtotal = Math.round((itemOriginalSubtotal * finalTotal) / standardTotal)
+          accumulatedSubtotal += itemSubtotal
+        }
+      }
+
+      lines.push({ type: 'row', left: `${qty}x ${name}`, right: formatRupiah(itemSubtotal) })
+    })
+
+    const paidVal = parseNum(b.paid_amount ?? b.total_paid)
+    const remVal = Math.max(0, finalTotal - paidVal)
+
+    lines.push({ type: 'separator', text: '-' })
+    lines.push({ type: 'row', left: 'Total Tagihan:', right: formatRupiah(finalTotal), bold: true })
+    lines.push({ type: 'row', left: 'Sudah Dibayar:', right: formatRupiah(paidVal) })
+    lines.push({ type: 'row', left: 'Sisa Tagihan:', right: remVal > 0 ? formatRupiah(remVal) : 'LUNAS', bold: true })
+
+    lines.push({ type: 'separator', text: '=' })
+    let hasFooterText = false
+    footerBlocks.forEach((block) => {
+      if (block.type === 'text' && block.content) {
+        hasFooterText = true
+        block.content.split('\n').forEach((txt) => {
+          if (txt.trim()) lines.push({ type: 'center', text: txt.trim(), bold: !!block.bold })
+        })
+      }
+    })
+    if (!hasFooterText) lines.push({ type: 'center', text: 'Terima kasih atas pesanan Anda!' })
+    lines.push({ type: 'center', text: 'Powered by Kasir Kopirex' })
+    lines.push({ type: 'feed', lines: 2 })
+
+    await printer.printShiftReceipt(lines)
+  } catch (err) {
+    console.error('Print error:', err)
+    triggerAlert('Gagal Cetak', 'Terjadi kesalahan saat mencetak struk thermal', 'error')
+  } finally {
+    printingBookingId.value = null
+  }
+}
 </script>
 
 <template>
-  <div class="mx-auto max-w-6xl space-y-6 pb-12">
+  <div class="mx-auto max-w-6xl px-3 sm:px-4 space-y-5 pb-16">
     <!-- Header -->
-    <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-      <div>
-        <div class="flex items-center gap-3">
-          <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-merchant-primary text-white shadow-md shadow-merchant-primary/20">
-            <i class="pi pi-calendar text-lg" />
-          </div>
-          <div>
-            <h1 class="text-xl md:text-2xl font-black text-slate-900 tracking-tight">Booking & Custom Order</h1>
-            <p class="text-xs md:text-sm text-slate-500">Wedding, katering, party, dan pesanan jumlah besar dengan sistem DP & pelunasan.</p>
-          </div>
-        </div>
+    <header class="flex items-center justify-between gap-3">
+      <div class="min-w-0">
+        <h1 class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-tight">Booking</h1>
+        <p class="text-xs sm:text-sm text-slate-500">Pemesanan dan custom order</p>
       </div>
-      <div class="flex items-center gap-3 shrink-0">
-        <AppButton @click="router.push('/pos/bookings/create')" class="flex items-center gap-2 px-5 py-2.5 shadow-md shadow-merchant-primary/20">
-          <i class="pi pi-plus font-bold" />
-          <span>Buat Booking Baru</span>
-        </AppButton>
-      </div>
+      <button
+        type="button"
+        @click="router.push('/pos/bookings/create')"
+        class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-merchant-primary text-white shadow-md shadow-merchant-primary/20 transition hover:bg-merchant-primary/90 active:scale-95"
+        title="Buat Booking Baru"
+      >
+        <i class="pi pi-plus text-base font-bold" />
+      </button>
     </header>
 
     <!-- App Alert -->
@@ -157,33 +275,38 @@ const getWaLink = (phone) => {
     />
 
     <!-- Navigation Tabs & Search -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-3">
-      <div class="flex items-center gap-2">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+      <div class="grid grid-cols-3 gap-2 w-full sm:w-auto sm:flex sm:items-center">
         <button
           type="button"
           @click="switchTab('active')"
-          class="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition"
+          class="flex items-center justify-center gap-1.5 rounded-xl px-3 sm:px-4 py-2.5 sm:py-2 text-xs sm:text-sm font-bold transition"
           :class="activeTab === 'active' ? 'bg-merchant-primary text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'"
         >
-          <i class="pi pi-clock" />
-          <span>Aktif / Berjalan</span>
+          <span>Aktif</span>
+          <span
+            class="flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-black transition"
+            :class="activeTab === 'active' ? 'bg-white text-merchant-primary' : (bookingStore.counts.active > 0 ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600')"
+          >
+            {{ bookingStore.counts.active || 0 }}
+          </span>
         </button>
+
         <button
           type="button"
           @click="switchTab('executed')"
-          class="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition"
+          class="flex items-center justify-center gap-1.5 rounded-xl px-3 sm:px-4 py-2.5 sm:py-2 text-xs sm:text-sm font-bold transition"
           :class="activeTab === 'executed' ? 'bg-merchant-primary text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'"
         >
-          <i class="pi pi-check-circle" />
-          <span>Selesai Dibuat</span>
+          <span>Selesai</span>
         </button>
+
         <button
           type="button"
           @click="switchTab('cancelled')"
-          class="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition"
+          class="flex items-center justify-center gap-1.5 rounded-xl px-3 sm:px-4 py-2.5 sm:py-2 text-xs sm:text-sm font-bold transition"
           :class="activeTab === 'cancelled' ? 'bg-merchant-primary text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'"
         >
-          <i class="pi pi-times-circle" />
           <span>Dibatalkan</span>
         </button>
       </div>
@@ -220,141 +343,126 @@ const getWaLink = (phone) => {
       </AppButton>
     </div>
 
-    <div v-else class="grid grid-cols-1 gap-4">
+    <!-- Daftar Card Booking: Ringkas, Informatif, dan Clean -->
+    <div v-else class="grid grid-cols-1 gap-3 sm:gap-4">
       <div
         v-for="booking in bookings"
         :key="booking.id"
-        class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
+        class="overflow-hidden rounded-2xl border transition-all duration-200"
+        :class="[
+          booking.status === 'executed'
+            ? 'bg-emerald-50/70 border-emerald-200/80 text-slate-800 opacity-85 hover:opacity-100 shadow-none hover:shadow-sm'
+            : booking.status === 'cancelled'
+            ? 'bg-rose-50/70 border-rose-200/80 text-slate-800 opacity-80 hover:opacity-100 shadow-none hover:shadow-sm'
+            : 'bg-white border-slate-200 text-slate-900 shadow-sm hover:shadow-md hover:border-slate-300'
+        ]"
       >
-        <div class="p-4 sm:p-5">
-          <!-- Top Row: Booking Number, Event Tag, Badges -->
-          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-            <div class="flex items-center gap-2">
-              <span class="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-mono font-black text-slate-700">
-                {{ booking.booking_number }}
+        <div class="p-3.5 sm:p-4 space-y-2.5">
+          <!-- Baris 1: Label Perlu Disiapkan & Status Lunas Sejajar -->
+          <div class="flex items-center justify-between gap-2 border-b border-slate-100/80 pb-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <!-- Label Status Eksekusi: Perlu Disiapkan / Selesai / Dibatalkan -->
+              <span
+                class="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+                :class="[
+                  booking.status === 'executed' ? 'bg-teal-100 text-teal-800 border border-teal-200' : '',
+                  booking.status === 'cancelled' ? 'bg-rose-100 text-rose-800 border border-rose-200' : '',
+                  booking.status !== 'executed' && booking.status !== 'cancelled' ? 'bg-sky-100 text-sky-800 border border-sky-200' : '',
+                ]"
+              >
+                {{
+                  booking.status === 'executed' ? 'Selesai' :
+                  booking.status === 'cancelled' ? 'Dibatalkan' : 'Perlu Disiapkan'
+                }}
               </span>
-              <span class="text-sm font-black text-slate-900">{{ booking.event_name || 'Pesanan Khusus' }}</span>
+
+              <!-- Label Sudah Lunas / Belum Lunas sejajar -->
+              <span
+                class="rounded-full px-2.5 py-0.5 text-[11px] font-black"
+                :class="isBookingLunas(booking) ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200'"
+              >
+                {{ isBookingLunas(booking) ? 'Sudah Lunas' : (isBookingDP(booking) ? 'Belum Lunas (DP)' : 'Belum Lunas') }}
+              </span>
             </div>
 
-            <div class="flex flex-wrap items-center gap-2">
-              <!-- Payment Badge -->
+            <!-- Countdown Event jika ada -->
+            <div v-if="getEventCountdown(booking.event_date) && booking.status !== 'executed' && booking.status !== 'cancelled'">
               <span
-                class="rounded-full border px-3 py-1 text-[11px] font-black"
-                :class="getPaymentBadge(booking).class"
+                class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] sm:text-[11px] font-black"
+                :class="[
+                  getEventCountdown(booking.event_date).isOverdue ? 'bg-rose-100 text-rose-700' : '',
+                  getEventCountdown(booking.event_date).isToday ? 'bg-amber-100 text-amber-800' : '',
+                  getEventCountdown(booking.event_date).isSoon ? 'bg-sky-100 text-sky-800' : '',
+                  getEventCountdown(booking.event_date).isFuture ? 'bg-slate-100 text-slate-700' : '',
+                ]"
               >
-                {{ getPaymentBadge(booking).label }}
-              </span>
-              <!-- Execution Badge -->
-              <span
-                class="rounded-full border px-3 py-1 text-[11px] font-bold"
-                :class="getExecutionBadge(booking).class"
-              >
-                {{ getExecutionBadge(booking).label }}
+                <i class="pi pi-bell text-[9px]" />
+                {{ getEventCountdown(booking.event_date).text }}
               </span>
             </div>
           </div>
 
-          <!-- Middle Row: Customer Info & Event Timing -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-3 text-xs md:text-sm">
-            <!-- Pelanggan -->
-            <div>
-              <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Pemesan</p>
-              <p class="mt-0.5 font-bold text-slate-900">{{ booking.customer_name }}</p>
-              <div class="mt-1 flex items-center gap-2 text-slate-500">
-                <i class="pi pi-phone text-xs" />
-                <span>{{ booking.customer_phone || '-' }}</span>
-                <a
-                  v-if="booking.customer_phone"
-                  :href="getWaLink(booking.customer_phone)"
-                  target="_blank"
-                  rel="noopener"
-                  class="flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] font-bold text-emerald-600 hover:bg-emerald-100 transition"
-                  title="Hubungi WhatsApp"
-                >
-                  <i class="pi pi-whatsapp" />
-                  <span>WA</span>
-                </a>
-              </div>
-              <p v-if="booking.customer_address" class="mt-1 text-slate-500 truncate" :title="booking.customer_address">
-                <i class="pi pi-map-marker text-xs mr-1 text-slate-400" />{{ booking.customer_address }}
-              </p>
+          <!-- Baris 2: No Booking, Informasi Pemesan, dan Jadwal Acara digabung -->
+          <div class="space-y-1.5 text-xs sm:text-sm">
+            <!-- No Booking & Nama Pemesan (Tanpa info no HP) -->
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-mono font-black text-slate-700">
+                {{ booking.booking_number }}
+              </span>
+              <span class="font-black text-slate-900 text-sm sm:text-base">
+                {{ booking.customer_name }}
+              </span>
+              <span v-if="booking.event_name" class="text-xs text-slate-500 font-medium">
+                &bull; {{ booking.event_name }}
+              </span>
             </div>
 
             <!-- Jadwal Acara -->
-            <div>
-              <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Jadwal Acara</p>
-              <p class="mt-0.5 font-bold text-slate-900">{{ formatEventDate(booking.event_date) }}</p>
-              <div v-if="getEventCountdown(booking.event_date)" class="mt-1.5">
-                <span
-                  class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-black"
-                  :class="[
-                    getEventCountdown(booking.event_date).isOverdue ? 'bg-rose-50 text-rose-600' : '',
-                    getEventCountdown(booking.event_date).isToday ? 'bg-amber-100 text-amber-800' : '',
-                    getEventCountdown(booking.event_date).isSoon ? 'bg-sky-100 text-sky-800' : '',
-                    getEventCountdown(booking.event_date).isFuture ? 'bg-slate-100 text-slate-700' : '',
-                  ]"
-                >
-                  <i class="pi pi-bell text-[10px]" />
-                  {{ getEventCountdown(booking.event_date).text }}
-                </span>
-              </div>
-            </div>
-
-            <!-- Item Ringkasan -->
-            <div>
-              <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Item Pesanan</p>
-              <p class="mt-0.5 font-bold text-slate-800">
-                {{ booking.items?.length || 0 }} Menu ({{ (booking.items || []).reduce((acc, i) => acc + Number(i.quantity), 0) }} porsi/cup)
-              </p>
-              <p class="mt-1 text-slate-500 text-xs truncate">
-                {{ (booking.items || []).map(i => `${i.product_name} (${i.quantity})`).join(', ') }}
-              </p>
+            <div class="flex items-center gap-1.5 text-slate-600">
+              <i class="pi pi-calendar text-xs text-slate-400" />
+              <span class="font-semibold text-slate-800">{{ formatEventDate(booking.event_date) }}</span>
             </div>
           </div>
 
-          <!-- Bottom Row: Financial Status & Action Button -->
-          <div class="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl bg-slate-50 p-3.5 border border-slate-100">
-            <div class="flex flex-wrap items-center gap-4 sm:gap-8">
-              <div>
-                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Kesepakatan</span>
-                <p class="text-base font-black text-slate-900 leading-tight">{{ formatRupiah(booking.custom_total) }}</p>
-                <p v-if="booking.normal_total !== booking.custom_total" class="text-[11px] text-slate-400 line-through">
-                  Katalog: {{ formatRupiah(booking.normal_total) }}
-                </p>
-              </div>
-
-              <div>
-                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sudah Dibayar</span>
-                <p class="text-base font-black text-emerald-600 leading-tight">{{ formatRupiah(booking.paid_amount) }}</p>
-                <p class="text-[11px] text-slate-500">
-                  {{ Math.round((booking.paid_amount / (booking.custom_total || 1)) * 100) }}% terbayar
-                </p>
-              </div>
-
-              <div>
-                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sisa Tagihan</span>
-                <p
-                  class="text-base font-black leading-tight"
-                  :class="booking.custom_total - booking.paid_amount > 0 ? 'text-rose-600' : 'text-slate-400'"
-                >
-                  {{ formatRupiah(Math.max(0, booking.custom_total - booking.paid_amount)) }}
-                </p>
-                <p v-if="booking.custom_total - booking.paid_amount <= 0" class="text-[11px] font-bold text-emerald-600">
-                  Lunas
-                </p>
-              </div>
-            </div>
-
-            <!-- Action buttons -->
-            <div class="flex items-center gap-2 shrink-0">
-              <router-link
-                :to="`/pos/bookings/${booking.id}`"
-                class="flex items-center gap-2 rounded-xl bg-merchant-primary px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-merchant-primary/90"
+          <!-- Baris 3 (Bawah): Tombol WA, Print Struk, dan Detail Sejajar -->
+          <div class="pt-2 border-t border-slate-100/80 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <!-- Tombol Chat WA: icon saja, tanpa bg, tanpa border -->
+              <a
+                v-if="booking.customer_phone"
+                :href="getWaLink(booking.customer_phone)"
+                target="_blank"
+                rel="noopener"
+                class="flex items-center gap-1 text-emerald-600 hover:text-emerald-700 transition p-1 leading-none font-bold text-xs"
+                title="Chat WhatsApp"
+                @click.stop
               >
-                <span>Detail & Pembayaran</span>
-                <i class="pi pi-arrow-right text-xs" />
-              </router-link>
+                <i class="pi pi-whatsapp text-lg" />
+                <span class="hidden sm:inline">WhatsApp</span>
+              </a>
+
+              <!-- Tombol Cetak Struk: warna primary, icon saja, tanpa bg, tanpa border -->
+              <button
+                type="button"
+                @click="handlePrintBookingReceipt(booking)"
+                :disabled="printingBookingId === booking.id"
+                class="flex items-center gap-1 text-merchant-primary hover:text-merchant-primary/80 transition p-1 leading-none font-bold text-xs"
+                title="Cetak Struk Booking"
+              >
+                <i v-if="printingBookingId === booking.id" class="pi pi-spin pi-spinner text-sm" />
+                <i v-else class="pi pi-print text-lg" />
+                <span class="hidden sm:inline">Cetak Struk</span>
+              </button>
             </div>
+
+            <!-- Tombol Detail -->
+            <router-link
+              :to="`/pos/bookings/${booking.id}`"
+              class="flex items-center gap-1.5 rounded-xl bg-merchant-primary px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-merchant-primary/90 active:scale-95 transition"
+            >
+              <span>Detail</span>
+              <i class="pi pi-arrow-right text-[10px]" />
+            </router-link>
           </div>
         </div>
       </div>
