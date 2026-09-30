@@ -212,10 +212,6 @@ const handlePaid = async (payload) => {
     return
   }
 
-  if (payload.receipt_data) {
-    await printer.printReceipt(payload.receipt_data)
-  }
-
   successPayload.value = {
     orderNumber: payload.receipt_data?.order_number ?? payload.order?.order_number ?? '',
     total: payload.receipt_data?.total_amount ?? cartStore.total,
@@ -224,6 +220,13 @@ const handlePaid = async (payload) => {
   }
 
   showPaymentSuccess.value = true
+
+  // Cetak struk di background tanpa menghambat tampilan sukses pembayaran
+  if (payload.receipt_data) {
+    printer.printReceipt(payload.receipt_data).catch(err => {
+      console.warn('Gagal cetak struk otomatis:', err)
+    })
+  }
 }
 
 const handlePaymentDone = () => {

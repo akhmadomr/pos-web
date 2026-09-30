@@ -5,12 +5,10 @@ export function useOffline() {
   const offlineStore = useOfflineStore()
 
   const handleOnline = async () => {
-    await offlineStore.setOffline(false)
-    await offlineStore.syncPendingOrders()
-  }
-
-  const handleOffline = async () => {
-    await offlineStore.setOffline(true)
+    // Jika sedang dalam mode online dan koneksi kembali, sinkronkan pesanan pending
+    if (!offlineStore.isOffline) {
+      await offlineStore.syncPendingOrders()
+    }
   }
 
   onMounted(async () => {
@@ -18,18 +16,14 @@ export function useOffline() {
       await offlineStore.hydrate()
     }
 
-    await offlineStore.setOffline(!navigator.onLine)
-
     window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
 
-    if (navigator.onLine) {
+    if (navigator.onLine && !offlineStore.isOffline) {
       await offlineStore.syncPendingOrders()
     }
   })
 
   onUnmounted(() => {
     window.removeEventListener('online', handleOnline)
-    window.removeEventListener('offline', handleOffline)
   })
 }

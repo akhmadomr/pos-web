@@ -94,24 +94,26 @@ export function usePrinter() {
         }
       }
 
-      // 2. Coba ESC/POS server lokal (port 7878)
-      const escPosPayload = await buildEscPosPayload(receiptData, settings)
-      const response = await fetch(`${PRINT_SERVER}/print`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(escPosPayload),
-        signal: AbortSignal.timeout(3000),
-      })
+      // 2. Coba ESC/POS server lokal (port 7878) HANYA jika printerOnline aktif
+      if (printerOnline.value) {
+        const escPosPayload = await buildEscPosPayload(receiptData, settings)
+        const response = await fetch(`${PRINT_SERVER}/print`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(escPosPayload),
+          signal: AbortSignal.timeout(2000),
+        })
 
-      if (response.ok) {
-        printerOnline.value = true
-        isPrinting.value = false
-        return true
+        if (response.ok) {
+          printerOnline.value = true
+          isPrinting.value = false
+          return true
+        }
+
+        // Server merespons tapi gagal
+        const err = await response.json().catch(() => ({}))
+        lastError.value = err.message ?? 'Printer error.'
       }
-
-      // Server merespons tapi gagal
-      const err = await response.json().catch(() => ({}))
-      lastError.value = err.message ?? 'Printer error.'
     } catch (err) {
       if (err.name === 'NetworkError' || err.message.includes('fetch')) {
         // Server tidak tersedia → fallback browser print

@@ -4,12 +4,6 @@ import axios from 'axios'
 const TOKEN_KEY = 'pos_token'
 
 
-function withOfflineStore(callback) {
-  import('@/stores/offline.store').then(({ useOfflineStore }) => {
-    callback(useOfflineStore())
-  })
-}
-
 const client = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api',
   headers: {
@@ -30,12 +24,6 @@ client.interceptors.request.use((config) => {
 
 client.interceptors.response.use(
   (response) => {
-    withOfflineStore((offlineStore) => {
-      if (offlineStore.isOffline) {
-        offlineStore.setOffline(false)
-      }
-    })
-
     if (response.data && response.data.message === 'Tidak ada shift aktif.') {
       localStorage.removeItem('pos_shift')
       import('@/stores/auth.store').then(({ useAuthStore }) => {
@@ -50,10 +38,6 @@ client.interceptors.response.use(
     return response
   },
   (error) => {
-    if (!error.response) {
-      withOfflineStore((offlineStore) => offlineStore.setOffline(true))
-    }
-
     if (error.response?.status === 401) {
       localStorage.removeItem(TOKEN_KEY)
       localStorage.removeItem('pos_user')
