@@ -598,6 +598,9 @@ const getRankBadgeClass = (idx) => {
                 <span class="rounded-lg bg-white px-3 py-1 text-sm font-black shadow-sm border border-slate-100" :class="exp.status === 'cancelled' ? 'text-slate-400 line-through' : 'text-rose-600'">{{ formatRupiah(exp.amount) }}</span>
               </div>
               <p class="text-xs font-semibold text-slate-500">{{ exp.qty }} x {{ formatRupiah(exp.price_per_item) }}</p>
+              <p v-if="exp.notes" class="text-[11px] text-slate-500 italic mt-0.5">
+                <i class="pi pi-align-left text-[9px] mr-1 text-slate-400"></i>{{ exp.notes }}
+              </p>
               
               <div v-if="exp.edit_status !== 'pending_edit' && exp.edit_status !== 'pending_cancel' && exp.status !== 'cancelled'" class="mt-3 flex gap-2 justify-end border-t border-slate-200 pt-3">
                 <button @click="openEditExpense(exp)" class="text-xs font-bold text-merchant-primary hover:text-merchant-secondary px-2 py-1 rounded bg-merchant-primary/5 hover:bg-merchant-primary/10 transition">

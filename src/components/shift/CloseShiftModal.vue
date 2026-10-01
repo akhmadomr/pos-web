@@ -157,8 +157,25 @@ const submitCloseShift = async () => {
           receiptData = await fetchShiftReceipt(response.data.id)
         }
 
-        const lines = receiptData?.receipt_lines || receiptData?.data?.receipt_lines
+        let lines = receiptData?.receipt_lines || receiptData?.data?.receipt_lines
         if (lines && lines.length > 0) {
+          // Filter agar tidak ada bagian stok kritis / bahan baku menipis
+          let inLowStockSection = false
+          lines = lines.filter((l) => {
+            const txt = (l.text || l.left || '').toUpperCase()
+            if (txt.includes('BAHAN BAKU MENIPIS') || txt.includes('STOK KRITIS')) {
+              inLowStockSection = true
+              return false
+            }
+            if (inLowStockSection) {
+              if (l.type === 'separator') {
+                inLowStockSection = false
+                return false
+              }
+              return false
+            }
+            return true
+          })
           await printer.printShiftReceipt(lines)
         }
       } catch (err) {
