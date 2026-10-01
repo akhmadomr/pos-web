@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import AppAlert from '@/components/common/AppAlert.vue'
 import PaymentModal from '@/components/payment/PaymentModal.vue'
 import PaymentSuccess from '@/components/payment/PaymentSuccess.vue'
@@ -20,6 +21,10 @@ const productStore = useProductStore()
 const cartStore = useCartStore()
 const payment = usePayment()
 const printer = usePrinter()
+const router = useRouter()
+const route = useRoute()
+
+const isBookingMode = computed(() => route.query.mode === 'booking')
 
 const selectedCategory = ref(null)
 const searchQuery = ref('')
@@ -28,6 +33,7 @@ const showVariantModal = ref(false)
 const selectedProduct = ref(null)
 const showPaymentModal = ref(false)
 const showPaymentSuccess = ref(false)
+const showEditSuccess = ref(false)
 
 const successPayload = ref({
   orderNumber: '',
@@ -60,13 +66,8 @@ const needsConfiguration = (product) =>
   (product.variants?.length ?? 0) > 0 || (product.addons?.length ?? 0) > 0
 
 const handleProductSelect = (product) => {
-  if (needsConfiguration(product)) {
-    selectedProduct.value = product
-    showVariantModal.value = true
-    return
-  }
-
-  cartStore.addItem(product, { quantity: 1 })
+  selectedProduct.value = product
+  showVariantModal.value = true
 }
 
 const handleVariantAdd = ({ product, variantSelections, addonIds, quantity, notes }) => {
@@ -75,14 +76,140 @@ const handleVariantAdd = ({ product, variantSelections, addonIds, quantity, note
 
 const handleCheckout = () => {
   if (!cartStore.items.length) return
+  if (isBookingMode.value) {
+    saveToBooking()
+    return
+  }
   showPaymentModal.value = true
 }
+
+const restoreRegularCart = () => {
+  const backup = sessionStorage.getItem('kopirex_regular_cart_backup')
+  if (backup) {
+    try {
+      cartStore.items = JSON.parse(backup)
+    } catch (e) {
+      cartStore.clearCart()
+    }
+    sessionStorage.removeItem('kopirex_regular_cart_backup')
+  } else {
+    cartStore.clearCart()
+  }
+}
+
+const initBookingMode = () => {
+  if (isBookingMode.value) {
+    // 1. Backup keranjang reguler kasir jika belum dibackup
+    if (!sessionStorage.getItem('kopirex_regular_cart_backup')) {
+      sessionStorage.setItem('kopirex_regular_cart_backup', JSON.stringify(cartStore.items))
+    }
+
+    // 2. Muat draft item booking ke cartStore
+    const rawDraft = localStorage.getItem('kopirex_pos_booking_draft')
+    if (rawDraft) {
+      try {
+        const draft = JSON.parse(rawDraft)
+        if (Array.isArray(draft.items) && draft.items.length > 0) {
+          cartStore.items = draft.items.map((item) => ({
+            id: item.id || crypto.randomUUID(),
+            product_id: item.product_id,
+            product_name: item.product_name,
+            unit_price: Number(item.unit_price) || 0,
+            addons_price: 0,
+            quantity: Number(item.quantity) || 1,
+            variant_label: item.variant_label || null,
+            addons_label: null,
+            notes: item.notes || null,
+            variant_selections: item.variant_selections || {},
+            addon_ids: item.addon_ids || [],
+          }))
+          return
+        }
+      } catch (e) {
+        console.error('Gagal memuat draft booking ke kasir:', e)
+      }
+    }
+    cartStore.items = []
+  }
+}
+
+const cancelBookingMode = () => {
+  restoreRegularCart()
+  router.push('/pos/bookings/create')
+}
+
+const saveToBooking = () => {
+  if (!cartStore.items.length) return
+
+  // 1. Konversi item cart menjadi format item booking
+  const bookingItems = cartStore.items.map((item) => {
+    const unitPrice = (Number(item.unit_price) || 0) + (Number(item.addons_price) || 0)
+    const variantParts = [item.variant_label, item.addons_label].filter(Boolean)
+    const variantLabel = variantParts.length > 0 ? variantParts.join(', ') : null
+
+    return {
+      id: item.id || crypto.randomUUID(),
+      product_id: item.product_id,
+      product_name: item.product_name,
+      variant_label: variantLabel,
+      unit_price: unitPrice,
+      quantity: Number(item.quantity) || 1,
+      notes: item.notes || '',
+      variant_selections: item.variant_selections || {},
+      addon_ids: item.addon_ids || [],
+    }
+  })
+
+  // 2. Simpan kembali ke draft booking di localStorage
+  const rawDraft = localStorage.getItem('kopirex_pos_booking_draft')
+  let draft = {}
+  if (rawDraft) {
+    try {
+      draft = JSON.parse(rawDraft)
+    } catch (e) {}
+  }
+  draft.items = bookingItems
+
+  // Perbarui total normal dan custom_total jika kasir belum menentukan custom total sendiri
+  const newNormalTotal = bookingItems.reduce(
+    (sum, it) => sum + Number(it.unit_price) * Number(it.quantity),
+    0,
+  )
+  if (!draft.isCustomTotalTouched) {
+    draft.custom_total = newNormalTotal
+  }
+  localStorage.setItem('kopirex_pos_booking_draft', JSON.stringify(draft))
+
+  // 3. Kembalikan keranjang kasir reguler
+  restoreRegularCart()
+
+  // 4. Redirect kembali ke form booking
+  router.push('/pos/bookings/create')
+}
+
+watch(
+  () => route.query.mode,
+  (newMode, oldMode) => {
+    if (newMode === 'booking') {
+      initBookingMode()
+    } else if (oldMode === 'booking') {
+      restoreRegularCart()
+    }
+  },
+)
 
 const handlePaid = async (payload) => {
   showPaymentModal.value = false
 
-  if (payload.receipt_data) {
-    await printer.printReceipt(payload.receipt_data)
+  if (payload.is_edit_request) {
+    showEditSuccess.value = true
+    setTimeout(() => {
+      showEditSuccess.value = false
+      cartStore.clearCart()
+      payment.resetPayment()
+      router.push('/pos/history')
+    }, 2500)
+    return
   }
 
   successPayload.value = {
@@ -93,6 +220,13 @@ const handlePaid = async (payload) => {
   }
 
   showPaymentSuccess.value = true
+
+  // Cetak struk di background tanpa menghambat tampilan sukses pembayaran
+  if (payload.receipt_data) {
+    printer.printReceipt(payload.receipt_data).catch(err => {
+      console.warn('Gagal cetak struk otomatis:', err)
+    })
+  }
 }
 
 const handlePaymentDone = () => {
@@ -103,12 +237,21 @@ const handlePaymentDone = () => {
 }
 
 onMounted(() => {
+  if (isBookingMode.value) {
+    initBookingMode()
+  }
   productStore.fetchProducts(authStore.outletId ?? authStore.user?.outlet_id)
+})
+
+onBeforeUnmount(() => {
+  if (isBookingMode.value) {
+    restoreRegularCart()
+  }
 })
 </script>
 
 <template>
-  <div class="flex h-[calc(100vh-5.5rem)] min-h-[500px] flex-col lg:h-[calc(100vh-10.5rem)] relative">
+  <div class="flex flex-1 min-h-0 flex-col">
     <AppAlert
       v-if="productStore.error"
       type="error"
@@ -117,8 +260,52 @@ onMounted(() => {
       dismissible
     />
 
-    <div class="grid min-h-0 flex-1 gap-4 pb-20 lg:grid-cols-5 lg:gap-6 lg:pb-0">
-      <section class="flex min-h-0 flex-col gap-4 lg:col-span-3">
+    <div v-if="cartStore.isEditingOrder" class="mb-4 shrink-0 rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <i class="pi pi-file-edit text-2xl text-amber-500" />
+        <div>
+          <h3 class="font-black text-amber-900">Mode Edit Transaksi ({{ cartStore.editingOriginalOrder?.order_number }})</h3>
+          <p class="text-xs font-semibold text-amber-700">Alasan: {{ cartStore.editingOrderReason }}</p>
+        </div>
+      </div>
+      <button @click="cartStore.clearCart()" class="text-xs font-bold text-amber-700 hover:text-amber-900 underline">Batalkan Edit</button>
+    </div>
+
+    <!-- Booking Mode Top Banner -->
+    <div
+      v-if="isBookingMode"
+      class="mb-3 shrink-0 rounded-2xl border border-merchant-primary bg-merchant-primary p-4 text-white shadow-lg shadow-merchant-primary/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+    >
+      <div class="flex items-center gap-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <h3 class="font-black text-sm sm:text-base">Pilih Menu untuk Pesanan Booking</h3>
+          </div>
+          <p class="text-xs text-white/80 mt-0.5">
+            Pilih produk beserta varian &amp; add-on di kasir
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+        <button
+          type="button"
+          @click="cancelBookingMode"
+          class="rounded-xl bg-white/10 hover:bg-white/20 border border-white/25 px-3.5 py-2 text-xs font-bold text-white transition active:scale-95"
+        >
+          Batal
+        </button>
+      </div>
+    </div>
+
+    <!-- Layout Grid: Mobile portrait (< 640px) = 1 col, Tablet/Desktop (>= 640px) = side-by-side -->
+    <div class="grid min-h-0 flex-1 gap-3 pb-20
+      sm:grid-cols-12 sm:gap-4 sm:pb-0
+      md:grid-cols-12 md:gap-5
+      lg:grid-cols-12 lg:gap-6
+      xl:grid-cols-12">
+
+      <!-- Produk Section -->
+      <section class="flex min-h-0 min-w-0 flex-col gap-2 sm:gap-3 lg:gap-4 sm:col-span-7 md:col-span-7 lg:col-span-8 xl:col-span-8">
         <CategoryTabs v-model="selectedCategory" :categories="productStore.categories" />
         <ProductSearch v-model="searchQuery" />
         <div class="min-h-0 flex-1 overflow-y-auto pr-1">
@@ -130,16 +317,20 @@ onMounted(() => {
         </div>
       </section>
 
-      <!-- Desktop Cart -->
-      <section class="hidden min-h-0 lg:col-span-2 lg:block">
-        <OrderCart class="h-full" @checkout="handleCheckout" />
+      <!-- Keranjang Samping: SM+, Landscape Tablet + Desktop -->
+      <section class="hidden min-h-0 sm:flex sm:flex-col sm:col-span-5 md:col-span-5 lg:col-span-4 xl:col-span-4">
+        <OrderCart
+          class="h-full"
+          :is-booking-mode="isBookingMode"
+          @checkout="handleCheckout"
+        />
       </section>
     </div>
 
-    <!-- Mobile Bottom Deck Cart -->
+    <!-- Mobile Portrait Bottom Deck Cart (disembunyikan di landscape & sm+) -->
     <div
       v-if="cartStore.items.length > 0"
-      class="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-3xl border-t border-slate-200 bg-white shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.15)] transition-all duration-300 ease-in-out lg:hidden"
+      class="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-3xl border-t border-slate-200 bg-white shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.15)] transition-all duration-300 ease-in-out landscape:hidden sm:hidden"
       :class="isCartExpanded ? 'h-[85vh]' : 'h-auto'"
     >
       <div 
@@ -161,9 +352,10 @@ onMounted(() => {
           <button 
             v-if="!isCartExpanded"
             @click.stop="handleCheckout" 
-            class="rounded-xl bg-merchant-primary px-6 py-3 text-sm font-bold text-white shadow-lg shadow-merchant-primary/30"
+            class="rounded-xl px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-lg transition active:scale-95"
+            :class="isBookingMode ? 'bg-merchant-primary hover:bg-merchant-primary/90 shadow-merchant-primary/30' : 'bg-merchant-primary shadow-merchant-primary/30'"
           >
-            Checkout
+            {{ isBookingMode ? 'Simpan' : 'Checkout' }}
           </button>
           <div class="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500">
             <i class="pi" :class="isCartExpanded ? 'pi-chevron-down' : 'pi-chevron-up'" />
@@ -172,7 +364,11 @@ onMounted(() => {
       </div>
 
       <div v-show="isCartExpanded" class="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-50/50">
-        <OrderCart class="h-full !rounded-none !border-none !shadow-none" @checkout="handleCheckout" />
+        <OrderCart
+          class="h-full !rounded-none !border-none !shadow-none"
+          :is-booking-mode="isBookingMode"
+          @checkout="handleCheckout"
+        />
       </div>
     </div>
 
@@ -193,5 +389,45 @@ onMounted(() => {
       :payment-method="successPayload.paymentMethod"
       @done="handlePaymentDone"
     />
+
+    <!-- Edit Success Modal -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition duration-300"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition duration-200"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="showEditSuccess"
+          class="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+        >
+          <div class="w-full max-w-sm rounded-3xl bg-white p-8 text-center shadow-2xl">
+            <div
+              class="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-amber-100"
+              style="animation: pop 0.4s ease-out;"
+            >
+              <i class="pi pi-file-edit text-5xl text-amber-600" />
+            </div>
+
+            <h2 class="text-2xl font-black text-slate-900">Pengajuan Terkirim</h2>
+            <p class="mt-2 text-sm text-slate-500 font-medium">
+              Pengajuan pengeditan transaksi berhasil dikirim. Silakan hubungi admin untuk mendapatkan persetujuan.
+            </p>
+
+            <p class="mt-6 text-xs text-slate-400 font-bold">Mengalihkan ke riwayat...</p>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
+
+<style scoped>
+@keyframes pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+</style>

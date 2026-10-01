@@ -22,8 +22,81 @@ export const useOrderStore = defineStore('order', () => {
     error.value = null
     try {
       const result = await ordersApi.fetchOrders()
-      orders.value = Array.isArray(result) ? result : result.data ?? []
+      const serverOrders = Array.isArray(result) ? result : result.data ?? []
+      
+      // Cache ke IndexedDB untuk offline
+      try {
+        const plain = JSON.parse(JSON.stringify(serverOrders))
+        await db.offline_orders.bulkPut(plain.map(o => ({
+          id: o.id,
+          order_number: o.order_number,
+          payload: o,
+          methodData: { payment_method: o.payment_method, amount: o.total_amount },
+          sync_status: 'synced',
+          created_at: o.created_at,
+        })))
+      } catch { /* silent */ }
+      
+      // Ambil transaksi offline lokal yang belum tersinkronisasi
+      let pendingOrders = []
+      try {
+        const localOrders = await db.offline_orders.toArray()
+        pendingOrders = localOrders
+          .filter(o => o.sync_status !== 'synced' && o.sync_status !== 'cancelled')
+          .map(o => ({
+            ...(o.payload ?? {}),
+            id: o.id,
+            order_number: o.order_number ?? o.payload?.order_number,
+            status: o.payload?.status ?? 'completed',
+            total_amount: o.methodData?.amount ?? o.payload?.total_amount ?? 0,
+            payment_method: o.methodData?.payment_method ?? o.payload?.payment_method,
+            created_at: o.created_at ?? o.payload?.created_at,
+            is_offline: true,
+            order_items: o.payload?.order_items ?? o.payload?.items?.map(i => ({
+              product_name: i.name ?? i.product_name,
+              quantity: i.qty ?? i.quantity,
+              unit_price: i.unit_price,
+              total_price: i.total ?? i.total_price,
+            })) ?? [],
+          }))
+      } catch { /* silent */ }
+
+      // Gabungkan data pending offline ke paling atas
+      orders.value = [...pendingOrders.reverse(), ...serverOrders]
     } catch (err) {
+      const isNetworkError = !navigator.onLine ||
+        err?.message === 'Network Error' ||
+        err?.name === 'TypeError'
+
+      if (isNetworkError) {
+        // Offline: baca dari IndexedDB, gabungkan server cache + pending
+        try {
+          const localOrders = await db.offline_orders.toArray()
+          orders.value = localOrders.map(o => ({
+            // Jika ini dari cache server, ambil payload langsung
+            ...(o.payload ?? {}),
+            id: o.id,
+            order_number: o.order_number ?? o.payload?.order_number,
+            status: o.payload?.status ?? 'completed',
+            total_amount: o.methodData?.amount ?? o.payload?.total_amount ?? 0,
+            payment_method: o.methodData?.payment_method ?? o.payload?.payment_method,
+            created_at: o.created_at ?? o.payload?.created_at,
+            is_offline: o.sync_status !== 'synced',
+            order_items: o.payload?.order_items ?? o.payload?.items?.map(i => ({
+              product_name: i.name ?? i.product_name,
+              quantity: i.qty ?? i.quantity,
+              unit_price: i.unit_price,
+              total_price: i.total ?? i.total_price,
+            })) ?? [],
+          })).reverse()
+          error.value = null
+        } catch {
+          orders.value = []
+          error.value = 'Gagal memuat riwayat pesanan.'
+        }
+        return
+      }
+
       error.value = err.response?.data?.message ?? 'Gagal memuat order.'
       orders.value = []
     } finally {
@@ -63,6 +136,18 @@ export const useOrderStore = defineStore('order', () => {
 
   async function cancelOrder(id) {
     try {
+      const order = orders.value.find(o => o.id === id)
+      if (order?.is_offline) {
+        // batalkan transaksi offline
+        await db.offline_orders.update(id, { sync_status: 'cancelled' })
+        try {
+          await db.sync_queue.where('local_ref_id').equals(id).modify({ status: 'cancelled' })
+        } catch { /* silent */ }
+        const idx = orders.value.findIndex((o) => o.id === id)
+        if (idx >= 0) orders.value[idx].status = 'cancelled'
+        return { success: true }
+      }
+
       const updated = await ordersApi.cancelOrder(id)
       const idx = orders.value.findIndex((o) => o.id === id)
       if (idx >= 0) orders.value[idx] = { ...orders.value[idx], status: 'cancelled', ...updated }
@@ -88,9 +173,18 @@ export const useOrderStore = defineStore('order', () => {
   }
 
   async function saveOfflineOrder(payload, methodData, orderTotal = 0, cartItems = []) {
+    const today = new Date()
+    const dateStr = today.getFullYear().toString() + (today.getMonth() + 1).toString().padStart(2, '0') + today.getDate().toString().padStart(2, '0')
+    const orderNumber = `KPX-${dateStr}-OFF${Math.floor(Math.random() * 10000)}`
+    
+    // Injeksi order_number ke payload agar server menggunakan nomor ini
+    payload.order_number = orderNumber
+    payload.idempotency_key = payload.idempotency_key || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'offline-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9))
+
     const offlineOrder = {
-      order_number: 'OFF-' + Math.floor(Math.random() * 10000),
-      timestamp: new Date().toISOString(),
+      order_number: orderNumber,
+      idempotency_key: payload.idempotency_key,
+      timestamp: today.toISOString(),
       payload,
       methodData,
       sync_status: 'pending'
@@ -100,6 +194,14 @@ export const useOrderStore = defineStore('order', () => {
     const rawOfflineOrder = JSON.parse(JSON.stringify(offlineOrder))
     const generatedId = await db.offline_orders.add(rawOfflineOrder)
     
+    // Masukkan ke antrian sinkronisasi SyncService
+    try {
+      const { enqueue, SYNC_TYPE } = await import('@/services/SyncService')
+      await enqueue(SYNC_TYPE.ORDER, { orderPayload: payload, methodData }, generatedId)
+    } catch (e) {
+      console.error('Failed to enqueue order:', e)
+    }
+
     // Simulasikan kembalian data order
     return {
       order: {

@@ -23,8 +23,33 @@ export async function closeShift(payload) {
   return data
 }
 
-export async function fetchShiftHistory(params) {
+export const fetchShiftHistory = async (params) => {
   const { data } = await client.get('/pos/shifts/history', { params })
+  return data
+}
+
+export const fetchExpenses = async () => {
+  const { data } = await client.get('/pos/shifts/expenses')
+  return data.data
+}
+
+export const addExpense = async (payload) => {
+  const { data } = await client.post('/pos/shifts/expenses', payload)
+  return data.data
+}
+
+export const requestEditExpense = async (id, payload) => {
+  const { data } = await client.put(`/pos/shifts/expenses/${id}/request-edit`, payload)
+  return data
+}
+
+export async function requestCancelExpense(id, reason) {
+  const { data } = await client.put(`/pos/shifts/expenses/${id}/request-cancel`, { reason })
+  return data
+}
+
+export async function requestAddExpense(shiftId, payload) {
+  const { data } = await client.post(`/pos/shifts/${shiftId}/expenses/request-add`, payload)
   return data
 }
 
@@ -33,7 +58,41 @@ export async function fetchShiftAnalytics(shiftId) {
   return data.data
 }
 
+export async function fetchDailyShiftAnalytics(date) {
+  const { data } = await client.get(`/pos/shifts/daily/${date}`)
+  return data
+}
+
 export async function fetchExpenseCategories() {
   const { data } = await client.get('/pos/shifts/expense-categories')
   return data.data
+}
+
+export async function fetchCriticalIngredients() {
+  const { data } = await client.get('/pos/shifts/critical-ingredients')
+  return data.data
+}
+
+export async function exportShiftDetailPdf(id) {
+  if (String(id).includes('-')) {
+    return client.get(`/pos/shifts/daily/${id}/export/pdf`, { responseType: 'blob' })
+  }
+  return client.get(`/pos/shifts/${id}/export/pdf`, { responseType: 'blob' })
+}
+
+export async function exportShiftDetailExcel(id) {
+  if (String(id).includes('-')) {
+    return client.get(`/pos/shifts/daily/${id}/export/excel`, { responseType: 'blob' })
+  }
+  return client.get(`/pos/shifts/${id}/export/excel`, { responseType: 'blob' })
+}
+
+export async function fetchShiftReceipt(shiftId) {
+  const { data } = await client.get(`/pos/shifts/${shiftId}/receipt/print`)
+  return data
+}
+
+export async function fetchDailyShiftReceipt(date) {
+  const { data } = await client.get(`/pos/shifts/daily/${date}/receipt/print`)
+  return data
 }

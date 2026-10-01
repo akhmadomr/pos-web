@@ -27,13 +27,13 @@ const handleSelect = (product) => {
 </script>
 
 <template>
-  <div v-if="loading" class="grid grid-cols-2 gap-3 md:grid-cols-3">
-    <div v-for="n in 9" :key="n" class="min-h-[120px] animate-pulse rounded-2xl bg-slate-200" />
+  <div v-if="loading" class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+    <div v-for="n in 12" :key="n" class="min-h-[120px] animate-pulse rounded-2xl bg-slate-200" />
   </div>
 
   <div
     v-else-if="products.length"
-    class="grid grid-cols-2 gap-3 md:grid-cols-3"
+    class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4"
   >
     <ProductCard
       v-for="product in products"

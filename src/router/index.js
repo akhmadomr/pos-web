@@ -37,9 +37,24 @@ const routes = [
         component: () => import('@/pages/pos/Index.vue'),
       },
       {
-        path: 'pos/orders',
-        name: 'pos-orders',
-        component: () => import('@/pages/pos/OrderList.vue'),
+        path: 'pos/expenses',
+        name: 'pos-expenses',
+        component: () => import('@/pages/pos/Expenses.vue'),
+      },
+      {
+        path: 'pos/bookings',
+        name: 'pos-bookings',
+        component: () => import('@/pages/pos/Bookings.vue'),
+      },
+      {
+        path: 'pos/bookings/create',
+        name: 'pos-bookings-create',
+        component: () => import('@/pages/pos/BookingCreate.vue'),
+      },
+      {
+        path: 'pos/bookings/:id',
+        name: 'pos-bookings-detail',
+        component: () => import('@/pages/pos/BookingDetail.vue'),
       },
       {
         path: 'pos/history',
@@ -52,9 +67,19 @@ const routes = [
         component: () => import('@/pages/pos/ShiftHistory.vue'),
       },
       {
-        path: 'pos/shifts/history/:id',
+        path: 'pos/shifts/daily/:date',
         name: 'pos-shift-history-detail',
         component: () => import('@/pages/pos/ShiftHistoryDetail.vue'),
+      },
+      {
+        path: 'pos/notifications',
+        name: 'pos-notifications',
+        component: () => import('@/pages/pos/Notifications.vue'),
+      },
+      {
+        path: 'pos/stock-opnames',
+        name: 'pos-stock-opnames',
+        component: () => import('@/pages/pos/StockOpname.vue'),
       },
     ],
   },
@@ -77,7 +102,7 @@ router.beforeEach(async (to) => {
   }
 
   if (authStore.isAuthenticated && to.meta.requiresAuth && !to.meta.guest) {
-    if (!authStore.shift && !to.meta.skipShiftFetch) {
+    if (!authStore.isShiftVerified && !to.meta.skipShiftFetch) {
       await authStore.fetchCurrentShift()
     }
   }

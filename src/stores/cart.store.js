@@ -31,8 +31,15 @@ function persistCart(state) {
       tableId: state.tableId,
       customerId: state.customerId,
       customer: state.customer,
+      customerName: state.customerName,
       voucherCode: state.voucherCode,
       voucherData: state.voucherData,
+      isEditingOrder: state.isEditingOrder,
+      editingOrderId: state.editingOrderId,
+      editingOrderReason: state.editingOrderReason,
+      editingOriginalOrder: state.editingOriginalOrder,
+      discountType: state.discountType,
+      discountValue: state.discountValue,
     }),
   )
 }
@@ -45,30 +52,57 @@ export const useCartStore = defineStore('cart', () => {
   const tableId = ref(saved?.tableId ?? null)
   const customerId = ref(saved?.customerId ?? null)
   const customer = ref(saved?.customer ?? null)
+  const customerName = ref(saved?.customerName ?? '')
   const voucherCode = ref(saved?.voucherCode ?? null)
   const voucherData = ref(saved?.voucherData ?? null)
 
+  const isEditingOrder = ref(saved?.isEditingOrder ?? false)
+  const editingOrderId = ref(saved?.editingOrderId ?? null)
+  const editingOrderReason = ref(saved?.editingOrderReason ?? '')
+  const editingOriginalOrder = ref(saved?.editingOriginalOrder ?? null)
+
+  const discountType = ref(saved?.discountType ?? null)
+  const discountValue = ref(saved?.discountValue ?? null)
+
   const subtotal = computed(() =>
     items.value.reduce(
-      (sum, item) => sum + (Number(item.unit_price) + Number(item.addons_price)) * item.quantity,
+      (sum, item) => sum + (Number(String(item.unit_price || 0).replace(/[^\d.-]/g, '')) + Number(String(item.addons_price || 0).replace(/[^\d.-]/g, ''))) * (item.quantity || 1),
       0,
     ),
   )
 
   const discountAmount = computed(() => {
-    const voucher = voucherData.value
-    if (!voucher || subtotal.value <= 0) return 0
-
-    if (voucher.type === 'percentage') {
-      const raw = subtotal.value * (Number(voucher.value) / 100)
-      const max = voucher.max_discount != null ? Number(voucher.max_discount) : raw
-      return Math.min(raw, max)
+    let amount = 0
+    
+    // Calculate manual discount
+    if (discountType.value && discountValue.value > 0) {
+      if (discountType.value === 'percentage') {
+        amount += subtotal.value * (Number(discountValue.value) / 100)
+      } else {
+        amount += subtotal.value === 0 ? Number(discountValue.value) : Math.min(Number(discountValue.value), subtotal.value)
+      }
     }
 
-    return Math.min(Number(voucher.value ?? 0), subtotal.value)
+    // Calculate voucher discount
+    const voucher = voucherData.value
+    if (voucher && subtotal.value > 0) {
+      if (voucher.type === 'percentage') {
+        const raw = subtotal.value * (Number(voucher.value) / 100)
+        const max = voucher.max_discount != null ? Number(voucher.max_discount) : raw
+        amount += Math.min(raw, max)
+      } else {
+        amount += Math.min(Number(voucher.value ?? 0), subtotal.value)
+      }
+    }
+    
+    return amount
   })
 
-  const discountLabel = computed(() => voucherData.value?.name ?? null)
+  const discountLabel = computed(() => {
+    if (voucherData.value?.name) return voucherData.value.name
+    if (discountType.value) return discountType.value === 'percentage' ? `Diskon (${discountValue.value}%)` : 'Diskon Manual'
+    return null
+  })
 
   const taxableAmount = computed(() => Math.max(0, subtotal.value - discountAmount.value))
 
@@ -88,7 +122,7 @@ export const useCartStore = defineStore('cart', () => {
   const itemCount = computed(() => items.value.reduce((sum, item) => sum + item.quantity, 0))
 
   watch(
-    [items, orderType, tableId, customerId, customer, voucherCode, voucherData],
+    [items, orderType, tableId, customerId, customer, customerName, voucherCode, voucherData, isEditingOrder, editingOrderId, editingOrderReason, editingOriginalOrder],
     () => {
       persistCart({
         items: items.value,
@@ -96,8 +130,38 @@ export const useCartStore = defineStore('cart', () => {
         tableId: tableId.value,
         customerId: customerId.value,
         customer: customer.value,
+        customerName: customerName.value,
         voucherCode: voucherCode.value,
         voucherData: voucherData.value,
+        isEditingOrder: isEditingOrder.value,
+        editingOrderId: editingOrderId.value,
+        editingOrderReason: editingOrderReason.value,
+        editingOriginalOrder: editingOriginalOrder.value,
+        discountType: discountType.value,
+        discountValue: discountValue.value,
+      })
+    },
+    { deep: true },
+  )
+
+  watch(
+    [discountType, discountValue],
+    () => {
+      persistCart({
+        items: items.value,
+        orderType: orderType.value,
+        tableId: tableId.value,
+        customerId: customerId.value,
+        customer: customer.value,
+        customerName: customerName.value,
+        voucherCode: voucherCode.value,
+        voucherData: voucherData.value,
+        isEditingOrder: isEditingOrder.value,
+        editingOrderId: editingOrderId.value,
+        editingOrderReason: editingOrderReason.value,
+        editingOriginalOrder: editingOriginalOrder.value,
+        discountType: discountType.value,
+        discountValue: discountValue.value,
       })
     },
     { deep: true },
@@ -107,15 +171,22 @@ export const useCartStore = defineStore('cart', () => {
     const unitPrice = calculateItemUnitPrice(product, variantSelections)
     const addonsPrice = calculateAddonsPrice(product, addonIds)
 
+    const variantIds = []
+    Object.entries(variantSelections).forEach(([type, name]) => {
+      const variant = product.variants?.find((v) => v.type === type && v.name === name)
+      if (variant) variantIds.push(variant.id)
+    })
+
     const newItem = {
       id: crypto.randomUUID(),
       product_id: product.id,
       product_name: product.name,
-      image: product.image,
-      unit_price: unitPrice,
-      addons_price: addonsPrice,
-      quantity,
+      image: product.image || product.image_url || null,
+      unit_price: Number(String(unitPrice).replace(/[^\d.-]/g, '')) || 0,
+      addons_price: Number(String(addonsPrice).replace(/[^\d.-]/g, '')) || 0,
+      quantity: Number(quantity) || 1,
       variant_selections: { ...variantSelections },
+      variant_ids: variantIds,
       variant_label: buildVariantLabel(product, variantSelections) || null,
       addon_ids: [...addonIds],
       addons_label: buildAddonsLabel(product, addonIds) || null,
@@ -156,6 +227,13 @@ export const useCartStore = defineStore('cart', () => {
     voucherData.value = null
     customerId.value = null
     customer.value = null
+    customerName.value = ''
+    isEditingOrder.value = false
+    editingOrderId.value = null
+    editingOrderReason.value = ''
+    editingOriginalOrder.value = null
+    discountType.value = null
+    discountValue.value = null
   }
 
   function setOrderType(type) {
@@ -173,10 +251,16 @@ export const useCartStore = defineStore('cart', () => {
     if (!data) {
       customerId.value = null
       customer.value = null
+      customerName.value = ''
       return
     }
     customerId.value = data.id
     customer.value = data
+    customerName.value = data.name
+  }
+
+  function setCustomerName(name) {
+    customerName.value = name
   }
 
   function applyVoucher(code, apiResult) {
@@ -196,14 +280,81 @@ export const useCartStore = defineStore('cart', () => {
       order_type: orderType.value,
       table_id: orderType.value === 'dine_in' ? tableId.value : null,
       customer_id: customerId.value,
+      customer_name: customerName.value?.trim() || null,
       voucher_code: voucherCode.value,
+      discount_type: discountType.value,
+      discount_value: discountType.value ? discountValue.value : null,
       items: items.value.map((item) => ({
         product_id: item.product_id,
+        product_name: item.product_name,
         quantity: item.quantity,
+        unit_price: item.unit_price,
+        addons_price: item.addons_price,
         variant_selections: item.variant_selections ?? {},
+        variant_label: item.variant_label,
         addon_ids: item.addon_ids ?? [],
+        addons_label: item.addons_label,
         notes: item.notes,
+        subtotal: (Number(item.unit_price || 0) + Number(item.addons_price || 0)) * Number(item.quantity || 1),
       })),
+      summary: {
+        subtotal: subtotal.value,
+        discount_amount: discountAmount.value,
+        tax_amount: taxAmount.value,
+        total_amount: total.value,
+      }
+    }
+  }
+
+  function loadOrderToCart(order, reason) {
+    clearCart()
+    isEditingOrder.value = true
+    editingOrderId.value = order.id
+    editingOrderReason.value = reason
+    editingOriginalOrder.value = order
+
+    orderType.value = order.order_type
+    tableId.value = order.table_id
+    customerId.value = order.customer_id
+    customerName.value = order.customer_name
+
+    // Process order items back into cart items
+    order.order_items.forEach((item) => {
+      // In the backend, variant_selections and addon_ids might not be returned in standard format,
+      // but assuming they are available or we can just pass them as raw if we have them.
+      // Wait, order items from API might only have variant_label and addons_label.
+      // If we don't have the original selections, we might need to parse them or fetch them.
+      // Let's assume we can push a mock cart item based on the API response.
+      items.value.push({
+        id: crypto.randomUUID(),
+        product_id: item.product_id,
+        product_name: item.product_name,
+        unit_price: Number(item.unit_price),
+        addons_price: Number(item.addons_price),
+        quantity: item.quantity,
+        variant_selections: item.variant_selections || {}, // if added to backend
+        variant_label: item.variant_label,
+        addon_ids: item.addon_ids || [], // if added to backend
+        addons_label: item.addons_label,
+        notes: item.notes || null,
+      })
+    })
+
+    // If there's a voucher
+    if (order.voucher_code) {
+      voucherCode.value = order.voucher_code
+      // Might need to fetch voucher data or just set minimal data
+      voucherData.value = {
+        code: order.voucher_code,
+        name: order.discount_amount > 0 ? 'Diskon Transaksi' : 'Voucher',
+        type: 'fixed',
+        value: order.discount_amount
+      }
+    }
+
+    if (order.discount_type) {
+      discountType.value = order.discount_type
+      discountValue.value = order.discount_value
     }
   }
 
@@ -213,6 +364,7 @@ export const useCartStore = defineStore('cart', () => {
     tableId,
     customerId,
     customer,
+    customerName,
     voucherCode,
     voucherData,
     discountLabel,
@@ -229,8 +381,16 @@ export const useCartStore = defineStore('cart', () => {
     setOrderType,
     setTable,
     setCustomer,
+    setCustomerName,
     applyVoucher,
     clearVoucher,
     buildOrderPayload,
+    loadOrderToCart,
+    isEditingOrder,
+    editingOrderId,
+    editingOrderReason,
+    editingOriginalOrder,
+    discountType,
+    discountValue,
   }
 })

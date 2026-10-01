@@ -27,12 +27,12 @@ export function buildDefaultVariantSelections(variants = []) {
 }
 
 export function calculateItemUnitPrice(product, variantSelections = {}) {
-  let price = Number(product.selling_price ?? 0)
+  let price = Number(String(product.selling_price ?? 0).replace(/[^\d.-]/g, '')) || 0
 
   Object.entries(variantSelections).forEach(([type, name]) => {
     const variant = product.variants?.find((v) => v.type === type && v.name === name)
     if (variant) {
-      price += Number(variant.price_adjustment ?? 0)
+      price += Number(String(variant.price_adjustment ?? 0).replace(/[^\d.-]/g, '')) || 0
     }
   })
 
@@ -44,7 +44,7 @@ export function calculateAddonsPrice(product, addonIds = []) {
 
   return addonIds.reduce((sum, id) => {
     const addon = product.addons?.find((a) => a.id === id)
-    return sum + Number(addon?.price ?? 0)
+    return sum + (Number(String(addon?.price ?? 0).replace(/[^\d.-]/g, '')) || 0)
   }, 0)
 }
 
@@ -53,10 +53,18 @@ export function buildVariantLabel(product, variantSelections = {}) {
 }
 
 export function buildAddonsLabel(product, addonIds = []) {
-  return addonIds
-    .map((id) => product.addons?.find((a) => a.id === id)?.name)
-    .filter(Boolean)
-    .join(', ')
+  if (!addonIds.length) return ''
+  
+  const counts = {}
+  addonIds.forEach(id => {
+    counts[id] = (counts[id] || 0) + 1
+  })
+
+  return Object.entries(counts).map(([id, qty]) => {
+    const addon = product.addons?.find(a => String(a.id) === String(id))
+    if (!addon) return null
+    return addon.name + (qty > 1 ? ` x${qty}` : '')
+  }).filter(Boolean).join(', ')
 }
 
 export function itemFingerprint(item) {

@@ -38,15 +38,38 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,vue}'],
-        navigateFallback: 'index.html',
+        // Langsung aktif tanpa menunggu tab lain ditutup
+        skipWaiting: true,
+        clientsClaim: true,
+
+        // Pre-cache semua aset utama aplikasi
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff,woff2,ttf,eot}'],
+
+        // Navigasi ke URL apapun (termasuk /pos, /shift/open, dll) akan fallback ke index.html
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//],  // Jangan intercept API call
+
         runtimeCaching: [
+          // API: Network first (pakai cache jika offline)
           {
             urlPattern: /\/api\/.*/i,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'kopirex-api-cache',
-              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 * 7 },
+              networkTimeoutSeconds: 5,
+              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 },
+              cacheableResponse: { statuses: [0, 200] }
+            }
+          },
+          // Aset gambar produk (termasuk dari server API): Cache first
+          {
+            urlPattern: ({ url }) => {
+              return /\.(png|jpg|jpeg|webp|svg|gif|ico)$/i.test(url.pathname)
+            },
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'kopirex-images-cache',
+              expiration: { maxEntries: 300, maxAgeSeconds: 60 * 60 * 24 * 7 },
               cacheableResponse: { statuses: [0, 200] }
             }
           }

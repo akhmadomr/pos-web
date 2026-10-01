@@ -1,14 +1,8 @@
 import axios from 'axios'
 
-const TOKEN_KEY = 'token'
+// Key harus sinkron dengan auth.store.js
+const TOKEN_KEY = 'pos_token'
 
-function withOfflineStore(callback) {
-  import('@/stores/offline.store').then(({ useOfflineStore }) => {
-    callback(useOfflineStore())
-  })
-}
-
-console.log('ENV:', import.meta.env.VITE_API_URL)
 
 const client = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api',
@@ -19,7 +13,6 @@ const client = axios.create({
   timeout: 30000,
 })
 
-console.log('BASE URL:', client.defaults.baseURL)
 
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem(TOKEN_KEY)
@@ -31,28 +24,44 @@ client.interceptors.request.use((config) => {
 
 client.interceptors.response.use(
   (response) => {
-    withOfflineStore((offlineStore) => {
-      if (offlineStore.isOffline) {
-        offlineStore.setOffline(false)
-      }
-    })
+    if (response.data && response.data.message === 'Tidak ada shift aktif.') {
+      localStorage.removeItem('pos_shift')
+      import('@/stores/auth.store').then(({ useAuthStore }) => {
+        const authStore = useAuthStore()
+        authStore.shift = null
+        if (window.location.pathname !== '/shift/open' && window.location.pathname !== '/login') {
+          window.location.href = '/shift/open'
+        }
+      })
+    }
+
     return response
   },
   (error) => {
-    if (!error.response) {
-      withOfflineStore((offlineStore) => offlineStore.setOffline(true))
-    }
-
     if (error.response?.status === 401) {
       localStorage.removeItem(TOKEN_KEY)
-      localStorage.removeItem('user')
-      localStorage.removeItem('shift')
+      localStorage.removeItem('pos_user')
+      localStorage.removeItem('pos_shift')
       if (window.location.pathname !== '/login') {
         window.location.href = '/login'
       }
     }
 
     if (error.response?.status === 422) {
+      const errors = error.response.data?.errors || {}
+      if (errors.shift_id) {
+        const shiftErrors = errors.shift_id.join(' ').toLowerCase()
+        if (shiftErrors.includes('sudah ditutup') || shiftErrors.includes('tidak ditemukan') || shiftErrors.includes('bukan milik kasir')) {
+          localStorage.removeItem('pos_shift')
+          import('@/stores/auth.store').then(({ useAuthStore }) => {
+            const authStore = useAuthStore()
+            authStore.shift = null
+            if (window.location.pathname !== '/shift/open') {
+              window.location.href = '/shift/open'
+            }
+          })
+        }
+      }
       return Promise.reject(error.response)
     }
 

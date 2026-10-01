@@ -1,33 +1,57 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import AppButton from '@/components/common/AppButton.vue'
 import CloseShiftModal from '@/components/shift/CloseShiftModal.vue'
 import ShiftSummary from '@/components/shift/ShiftSummary.vue'
 import ProfileModal from '@/components/profile/ProfileModal.vue'
+import LowStockBanner from '@/components/layout/LowStockBanner.vue'
+import ActiveBookingBanner from '@/components/layout/ActiveBookingBanner.vue'
+import NotificationBell from '@/components/layout/NotificationBell.vue'
 import { useAuthStore } from '@/stores/auth.store'
+import { useNotificationStore } from '@/stores/notification.store'
 import { usePrinter } from '@/composables/usePrinter'
 import { useSettingsStore } from '@/stores/settings.store'
+import { useOfflineStore } from '@/stores/offline.store'
+import { useBookingStore } from '@/stores/booking.store'
 import logoUrl from '@/assets/logo kopirex-01.png'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const notifStore = useNotificationStore()
 const settingsStore = useSettingsStore()
+const offlineStore = useOfflineStore()
+const bookingStore = useBookingStore()
 const printer = usePrinter()
 
-const now = ref(dayjs())
+// Gunakan offlineStore.isOffline agar konsisten dengan AppOfflineBanner
+const isOnline = computed(() => !offlineStore.isOffline)
+
+const handleToggleOfflineMode = async () => {
+  if (offlineStore.isOffline) {
+    await offlineStore.setOffline(false)
+  } else {
+    const confirmSwitch = window.confirm(
+      'Beralih ke Mode Offline?\n\nDalam Mode Offline, transaksi akan disimpan di perangkat ini dan disinkronkan saat Anda kembali ke Mode Online.'
+    )
+    if (confirmSwitch) {
+      await offlineStore.setOffline(true)
+    }
+  }
+}
 const showCloseModal = ref(false)
+const ignoredShiftBannerId = ref(null)
 const shiftSummaryRef = ref(null)
 let clockTimer = null
+let printerReconnectTimer = null
 const isFullscreen = ref(false)
 const isSidebarOpen = ref(false)
 const showDropdown = ref(false)
 const showProfileModal = ref(false)
 
-const isOnline = ref(navigator.onLine)
-const updateOnlineStatus = () => { isOnline.value = navigator.onLine }
+const now = ref(dayjs())
 
 const toggleFullscreen = () => {
   if (!document.fullscreenElement) {
@@ -44,14 +68,45 @@ const toggleFullscreen = () => {
 const clockLabel = computed(() => now.value.format('HH:mm:ss'))
 const dateLabel = computed(() => now.value.format('dddd, DD MMM YYYY'))
 
+const isShiftEndingSoon = computed(() => {
+  const shift = authStore.shift
+  const schedule = shift?.schedule
+  if (!schedule || !schedule.end_time) return false
+  if (ignoredShiftBannerId.value === shift.id) return false
+
+  const currentTime = now.value.format('HH:mm:ss')
+  const startTime = schedule.start_time
+  const endTime = schedule.end_time
+
+  const endParts = endTime.split(':')
+  let warnHour = parseInt(endParts[0], 10) - 1
+  if (warnHour < 0) warnHour = 23
+  const warnTime = `${warnHour.toString().padStart(2, '0')}:${endParts[1]}:${endParts[2]}`
+
+  if (startTime > endTime) {
+     // Overnight shift (e.g. 22:00 to 06:00)
+     if (currentTime >= warnTime || currentTime < endTime) return true
+     if (currentTime > endTime && currentTime < startTime) return true
+  } else {
+     // Normal shift
+     if (currentTime >= warnTime) return true
+  }
+  return false
+})
+
 const navItems = [
-  { label: 'Kasir', path: '/pos', icon: 'pi-shopping-cart' },
-  { label: 'Order', path: '/pos/orders', icon: 'pi-receipt' },
-  { label: 'Riwayat', path: '/pos/history', icon: 'pi-history' },
-  { label: 'Histori Shift', path: '/pos/shifts/history', icon: 'pi-calendar-clock' },
+  { label: 'Kasir', path: '/pos', icon: 'pi-shopping-bag' },
+  { label: 'Booking', path: '/pos/bookings', icon: 'pi-calendar' },
+  { label: 'Pengeluaran', path: '/pos/expenses', icon: 'pi-money-bill' },
+  { label: 'Stok Outlet', path: '/pos/stock-opnames', icon: 'pi-box' },
+  { label: 'Riwayat Pesanan', path: '/pos/history', icon: 'pi-history' },
+  { label: 'Riwayat Shift', path: '/pos/shifts/history', icon: 'pi-calendar-clock' },
 ]
 
-const isActive = (path) => route.path === path
+const isActive = (path) => {
+  if (path === '/pos') return route.path === '/pos'
+  return route.path === path || route.path.startsWith(path + '/')
+}
 
 const handleLogout = async () => {
   await authStore.logout()
@@ -62,29 +117,42 @@ const onShiftClosed = () => {
   shiftSummaryRef.value?.refresh?.()
 }
 
+let bookingTimer = null
+
 onMounted(() => {
   settingsStore.load()
+  printer.autoConnectBluetooth()
+  notifStore.fetchNotifications()
+  bookingStore.fetchCounts()
+  
   clockTimer = window.setInterval(() => {
     now.value = dayjs()
   }, 1000)
 
+  bookingTimer = window.setInterval(() => {
+    bookingStore.fetchCounts()
+  }, 20000)
+
+  // Polling dihapus karena spamming connect() di background menyebabkan Android Bluetooth stack crash (NetworkError).
+  // Sebagai gantinya, koneksi otomatis dipanggil sekali saat load, dan dipicu manual lewat ikon print.
+
   document.addEventListener('fullscreenchange', () => {
     isFullscreen.value = !!document.fullscreenElement
   })
+})
 
-  window.addEventListener('online', updateOnlineStatus)
-  window.addEventListener('offline', updateOnlineStatus)
+watch(() => route.path, () => {
+  bookingStore.fetchCounts()
 })
 
 onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer)
-  window.removeEventListener('online', updateOnlineStatus)
-  window.removeEventListener('offline', updateOnlineStatus)
+  if (bookingTimer) clearInterval(bookingTimer)
 })
 </script>
 
 <template>
-  <div class="flex min-h-screen bg-slate-100">
+  <div class="flex h-screen bg-slate-100 overflow-hidden">
     <!-- Overlay for Sidebar -->
     <div 
       v-if="isSidebarOpen" 
@@ -110,12 +178,20 @@ onUnmounted(() => {
           v-for="item in navItems"
           :key="item.path"
           :to="item.path"
-          class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition"
+          class="flex items-center justify-between rounded-xl px-4 py-3 text-sm font-bold transition"
           :class="isActive(item.path) ? 'bg-merchant-primary/10 text-merchant-primary' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'"
           @click="isSidebarOpen = false"
         >
-          <i :class="['pi', item.icon]" />
-          {{ item.label }}
+          <div class="flex items-center gap-3">
+            <i :class="['pi', item.icon]" />
+            <span>{{ item.label }}</span>
+          </div>
+          <span
+            v-if="item.path === '/pos/bookings' && bookingStore.activeCount > 0"
+            class="flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white shadow-sm"
+          >
+            {{ bookingStore.activeCount > 99 ? '99+' : bookingStore.activeCount }}
+          </span>
         </router-link>
         
         <div class="my-4 border-t border-slate-100" />
@@ -146,10 +222,27 @@ onUnmounted(() => {
             :class="printer.bluetoothDevice.value ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'"
             @click="printer.connectBluetooth()"
           >
-            <i class="pi pi-bluetooth" />
-            {{ printer.bluetoothDevice.value ? 'Bluetooth Terhubung' : 'Koneksikan Bluetooth' }}
+            <i v-if="printer.isConnectingBluetooth.value" class="pi pi-spin pi-spinner text-blue-500" />
+            <i v-else class="pi pi-bluetooth" />
+            {{ printer.isConnectingBluetooth.value ? 'Menyambungkan...' : (printer.bluetoothDevice.value ? 'Bluetooth Terhubung' : 'Koneksikan Bluetooth') }}
           </button>
           
+          <button
+            type="button"
+            class="flex w-full items-center justify-between rounded-xl px-4 py-3 text-sm font-bold transition hover:bg-slate-50 cursor-pointer"
+            :class="isOnline ? 'text-emerald-600 bg-emerald-50/50' : 'text-amber-700 bg-amber-50'"
+            @click="handleToggleOfflineMode(); isSidebarOpen = false"
+          >
+            <div class="flex items-center gap-3">
+              <i :class="['pi', isOnline ? 'pi-wifi' : 'pi-wifi-off']" />
+              <span>{{ isOnline ? 'Mode Online' : 'Mode Offline' }}</span>
+            </div>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                  :class="isOnline ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-200 text-amber-800'">
+              Ubah
+            </span>
+          </button>
+
           <div class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-emerald-600">
             <i class="pi pi-check-circle" />
             Shift Aktif
@@ -178,14 +271,21 @@ onUnmounted(() => {
 
     <div class="flex min-w-0 flex-1 flex-col">
       <header class="sticky top-0 z-40 border-b border-slate-200 bg-white shadow-sm">
-        <div class="flex items-center justify-between gap-2 px-3 py-2 lg:px-6 lg:py-3">
+        <div class="flex items-center justify-between gap-1 px-1 py-2 sm:gap-2 sm:px-3 lg:px-6 lg:py-3">
           
           <!-- LEFT: Logo (Trigger Sidebar) -->
           <button 
-            class="flex shrink-0 items-center justify-center rounded-xl p-1 transition hover:bg-slate-50 lg:p-2"
+            class="relative flex shrink-0 items-center justify-center rounded-xl p-1 transition hover:bg-slate-50 lg:p-2"
             @click="isSidebarOpen = true"
+            title="Buka Menu"
           >
             <img :src="logoUrl" alt="Kopirex" class="h-8 w-auto lg:h-10" />
+            <span
+              v-if="bookingStore.activeCount > 0"
+              class="absolute -top-1 -right-1 flex h-4 min-w-4 sm:h-5 sm:min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] sm:text-[10px] font-bold text-white shadow-sm ring-2 ring-white"
+            >
+              {{ bookingStore.activeCount > 99 ? '99+' : bookingStore.activeCount }}
+            </span>
           </button>
 
           <!-- CENTER: Shift Summary -->
@@ -197,20 +297,30 @@ onUnmounted(() => {
           <div class="flex shrink-0 items-center gap-2 lg:gap-3">
             
             <!-- Status Icons -->
-            <div class="flex items-center gap-1.5 lg:gap-2 mr-1">
-              <div class="relative flex h-8 w-8 items-center justify-center rounded-full"
-                   :class="isOnline ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400 bg-slate-100'"
-                   title="Status Internet">
-                <i class="pi pi-wifi text-sm lg:text-base" />
-                <div v-if="!isOnline" class="absolute h-0.5 w-5 rotate-45 rounded-full bg-slate-500" />
+            <div class="flex items-center gap-1 sm:gap-1.5 lg:gap-2 mr-0.5 sm:mr-1">
+              <button
+                type="button"
+                @click="handleToggleOfflineMode"
+                class="relative flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full transition cursor-pointer hover:ring-2 hover:ring-slate-300"
+                :class="isOnline ? 'text-emerald-500 bg-emerald-50 hover:bg-emerald-100' : 'text-amber-700 bg-amber-100 hover:bg-amber-200'"
+                :title="isOnline ? 'Mode Online (Klik untuk beralih ke Mode Offline)' : 'Mode Offline (Klik untuk beralih ke Mode Online)'"
+              >
+                <i class="pi text-sm lg:text-base" :class="isOnline ? 'pi-wifi' : 'pi-wifi-off'" />
+              </button>
+              <div class="relative flex h-6 w-6 sm:h-8 sm:w-8 cursor-pointer items-center justify-center rounded-full"
+                   :class="(printer.printerOnline.value || printer.bluetoothDevice.value) ? 'text-emerald-500 bg-emerald-50 hover:bg-emerald-100' : 'text-slate-400 bg-slate-100 hover:bg-slate-200'"
+                   title="Status Printer (Klik untuk sambungkan manual)"
+                   @click="printer.connectBluetooth()">
+                <i v-if="printer.isConnectingBluetooth.value" class="pi pi-spin pi-spinner text-sm lg:text-base text-blue-500" />
+                <template v-else>
+                  <i class="pi pi-print text-sm lg:text-base" />
+                  <div v-if="!printer.printerOnline.value && !printer.bluetoothDevice.value" class="absolute h-0.5 w-5 rotate-45 rounded-full bg-slate-500" />
+                </template>
               </div>
-              <div class="relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full"
-                   :class="(printer.printerOnline.value || printer.bluetoothDevice.value) ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400 bg-slate-100'"
-                   title="Status Printer"
-                   @click="isSidebarOpen = true">
-                <i class="pi pi-print text-sm lg:text-base" />
-                <div v-if="!printer.printerOnline.value && !printer.bluetoothDevice.value" class="absolute h-0.5 w-5 rotate-45 rounded-full bg-slate-500" />
-              </div>
+            </div>
+
+            <div class="hidden lg:block">
+              <NotificationBell />
             </div>
 
             <div class="hidden text-right lg:block">
@@ -221,9 +331,12 @@ onUnmounted(() => {
             <div class="relative">
               <button 
                 @click="showDropdown = !showDropdown" 
-                class="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-slate-600 transition hover:bg-slate-300 lg:h-10 lg:w-10"
+                class="relative flex h-7 w-7 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-slate-200 text-slate-600 transition hover:bg-slate-300 lg:h-10 lg:w-10"
               >
                 <i class="pi pi-user text-base lg:text-lg" />
+                <span v-if="notifStore.unreadCount > 0" class="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-sm lg:hidden">
+                  {{ notifStore.unreadCount > 9 ? '9+' : notifStore.unreadCount }}
+                </span>
               </button>
 
               <!-- Dropdown Menu -->
@@ -233,6 +346,10 @@ onUnmounted(() => {
                    <p class="truncate text-[10px] uppercase tracking-wider text-slate-500">{{ authStore.outletName }}</p>
                  </div>
                  <div class="py-1">
+                   <button @click="showDropdown = false; router.push('/pos/notifications')" class="flex w-full items-center justify-between px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 lg:hidden">
+                     <span class="flex items-center"><i class="pi pi-bell w-6 text-slate-400" /> Notifikasi</span>
+                     <span v-if="notifStore.unreadCount > 0" class="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">{{ notifStore.unreadCount }}</span>
+                   </button>
                    <button @click="showDropdown = false; showProfileModal = true" class="flex w-full items-center px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                      <i class="pi pi-user-edit w-6 text-slate-400" /> Profil Saya
                    </button>
@@ -255,7 +372,7 @@ onUnmounted(() => {
             v-for="item in navItems"
             :key="item.path"
             :to="item.path"
-            class="flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition"
+            class="relative flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition"
             :class="
               isActive(item.path)
                 ? 'border-merchant-primary text-merchant-primary'
@@ -263,12 +380,40 @@ onUnmounted(() => {
             "
           >
             <i :class="['pi', item.icon]" />
-            {{ item.label }}
+            <span>{{ item.label }}</span>
+            <span
+              v-if="item.path === '/pos/bookings' && bookingStore.activeCount > 0"
+              class="ml-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white shadow-sm"
+            >
+              {{ bookingStore.activeCount > 99 ? '99+' : bookingStore.activeCount }}
+            </span>
           </router-link>
         </nav>
       </header>
 
-      <main class="flex-1 p-2 sm:p-4 lg:p-6">
+      <!-- Sticky Shift Warning Banner -->
+      <div v-if="authStore.hasActiveShift && isShiftEndingSoon" class="sticky top-[60px] lg:top-[105px] z-30 flex flex-col sm:flex-row items-center justify-between gap-2 bg-rose-500 px-4 py-2 text-white shadow-md">
+        <div class="flex items-center gap-2 text-sm font-bold flex-1">
+          <i class="pi pi-exclamation-triangle text-lg" />
+          <span>Waktu {{ authStore.shift.schedule.name }} akan/telah berakhir ({{ authStore.shift.schedule.end_time.substring(0, 5) }}). Harap segera Tutup Shift.</span>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <button @click="showCloseModal = true" class="rounded-lg bg-white px-3 py-1.5 text-xs font-black text-rose-600 shadow-sm transition hover:bg-rose-50">
+            Tutup Shift
+          </button>
+          <button @click="ignoredShiftBannerId = authStore.shift.id" class="flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-rose-600 text-white transition hover:bg-rose-700" title="Abaikan untuk shift ini">
+            <i class="pi pi-times" />
+          </button>
+        </div>
+      </div>
+      
+      <!-- Active Booking Today Banner -->
+      <ActiveBookingBanner />
+
+      <!-- Low Stock Banner -->
+      <LowStockBanner v-if="authStore.hasActiveShift" />
+
+      <main class="flex-1 flex flex-col min-h-0 p-2 sm:p-4 lg:p-6 overflow-y-auto">
         <router-view />
       </main>
     </div>

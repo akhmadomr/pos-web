@@ -95,9 +95,9 @@ const updateStatus = async (orderId, newStatus) => {
         :key="order.id"
         class="glass-card flex flex-col overflow-hidden"
       >
-        <div class="flex items-start justify-between border-b border-slate-100 p-4">
+        <div class="flex flex-col sm:flex-row sm:items-start justify-between border-b border-slate-100 p-4 gap-3 sm:gap-0">
           <div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
               <span class="font-bold text-slate-900">{{ order.order_number }}</span>
               <span
                 class="rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider"
@@ -106,9 +106,10 @@ const updateStatus = async (orderId, newStatus) => {
                 {{ getStatusBadge(order.status).label }}
               </span>
             </div>
-            <p class="text-xs text-slate-500">{{ dayjs(order.created_at).format('HH:mm') }}</p>
+            <p class="text-xs text-slate-500 mt-1">{{ dayjs(order.created_at).format('HH:mm') }}</p>
+            <p class="text-sm font-semibold mt-1">Pelanggan: {{ order.customer_name || 'Kopirex' }}</p>
           </div>
-          <div class="text-right">
+          <div class="text-left sm:text-right">
             <p class="font-bold text-merchant-primary">{{ formatRupiah(order.total_amount) }}</p>
             <p class="text-xs font-semibold uppercase text-slate-400">
               {{ order.order_type === 'dine_in' ? `Dine In — Meja ${order.table?.table_number ?? '-'}` : 'Take Away' }}

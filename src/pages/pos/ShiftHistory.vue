@@ -1,10 +1,13 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { fetchShiftHistory } from '@/api/shifts'
+import { fetchShiftHistory, fetchDailyShiftReceipt } from '@/api/shifts'
 import { formatRupiah } from '@/utils/currency'
 import dayjs from 'dayjs'
 import 'dayjs/locale/id'
+import { db } from '@/utils/db'
+import { idbGet, idbSet } from '@/utils/indexeddb'
+import { usePrinter } from '@/composables/usePrinter'
 
 dayjs.locale('id')
 
@@ -19,22 +22,72 @@ const loadHistory = async (page = 1) => {
     const data = await fetchShiftHistory({ page })
     shifts.value = data.data
     meta.value = data.meta
+
+    // Cache ke IndexedDB untuk offline
+    try {
+      await idbSet('shift-history-cache', JSON.parse(JSON.stringify(data)))
+    } catch { /* silent */ }
   } catch (error) {
-    console.error('Failed to fetch shifts:', error)
+    const isNetworkError = !navigator.onLine ||
+      error?.message === 'Network Error' ||
+      error?.name === 'TypeError'
+
+    if (isNetworkError) {
+      // Offline: coba dari IndexedDB cache
+      try {
+        const cached = await idbGet('shift-history-cache')
+        if (cached) {
+          shifts.value = cached.data ?? []
+          meta.value = cached.meta ?? { current_page: 1, last_page: 1 }
+          return
+        }
+      } catch { /* silent */ }
+
+      // Fallback ke data lokal di db.shifts
+      try {
+        const localShifts = await db.shifts.toArray()
+        // Format mirip API response
+        const grouped = {}
+        localShifts.forEach(s => {
+          const date = dayjs(s.opened_at).format('YYYY-MM-DD')
+          if (!grouped[date]) grouped[date] = { date, shifts: [], total_transactions: 0, total_revenue: 0, shift_count: 0 }
+          grouped[date].shifts.push(s.cashier_name ?? 'Kasir')
+          grouped[date].shift_count += 1
+        })
+        shifts.value = Object.values(grouped).reverse()
+      } catch { /* silent */ }
+    } else {
+      console.error('Failed to fetch shifts:', error)
+    }
   } finally {
     loading.value = false
   }
 }
 
-const goToDetail = (id) => {
-  router.push({ name: 'pos-shift-history-detail', params: { id } })
+const goToDetail = (date) => {
+  router.push(`/pos/shifts/daily/${date}`)
 }
 
-const formatDuration = (start, end) => {
-  if (!start || !end) return '-'
-  const diffHours = dayjs(end).diff(dayjs(start), 'hour')
-  const diffMinutes = dayjs(end).diff(dayjs(start), 'minute') % 60
-  return `${diffHours}j ${diffMinutes}m`
+const printer = usePrinter()
+const isPrinting = ref(null)
+
+const printDaily = async (date, e) => {
+  e.stopPropagation()
+  if (isPrinting.value) return
+  isPrinting.value = date
+  try {
+    const receiptData = await fetchDailyShiftReceipt(date)
+    if (receiptData?.receipt_lines) {
+      await printer.printShiftReceipt(receiptData.receipt_lines)
+    } else {
+      alert('Gagal mengambil data struk harian.')
+    }
+  } catch (err) {
+    console.error(err)
+    alert('Terjadi kesalahan saat mencetak struk.')
+  } finally {
+    isPrinting.value = null
+  }
 }
 
 onMounted(() => {
@@ -43,15 +96,15 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+  <div class="space-y-4 md:space-y-6">
+    <div class="flex flex-col gap-1 md:gap-2 md:flex-row md:items-center md:justify-between">
       <div>
-        <h1 class="text-xl font-black text-slate-900">Riwayat Shift</h1>
-        <p class="text-sm text-slate-500">Daftar shift yang telah selesai</p>
+        <h1 class="text-lg md:text-xl font-black text-slate-900">Riwayat Shift</h1>
+        <p class="text-xs md:text-sm text-slate-500">Daftar shift yang telah selesai</p>
       </div>
     </div>
 
-    <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+    <div class="rounded-xl md:rounded-2xl border border-slate-100 bg-white p-4 md:p-6 shadow-sm">
       <div v-if="loading" class="flex justify-center py-12">
         <i class="pi pi-spin pi-spinner text-3xl text-merchant-primary" />
       </div>
@@ -63,37 +116,47 @@ onMounted(() => {
       <div v-else class="space-y-4">
         <div 
           v-for="shift in shifts" 
-          :key="shift.id"
-          class="flex cursor-pointer flex-col gap-4 rounded-xl border border-slate-100 bg-slate-50 p-4 transition-colors hover:border-merchant-primary/30 hover:bg-merchant-primary/5 sm:flex-row sm:items-center sm:justify-between"
-          @click="goToDetail(shift.id)"
+          :key="shift.date"
+          class="flex cursor-pointer flex-col gap-3 md:gap-4 rounded-xl border border-slate-100 bg-slate-50 p-3 md:p-4 transition-colors hover:border-merchant-primary/30 hover:bg-merchant-primary/5 sm:flex-row sm:items-center sm:justify-between"
+          @click="goToDetail(shift.date)"
         >
-          <div class="flex items-center gap-4">
-            <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm text-merchant-primary">
-              <i class="pi pi-calendar text-xl" />
+          <div class="flex items-center gap-3 md:gap-4">
+            <div class="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-xl bg-white shadow-sm text-merchant-primary shrink-0">
+              <i class="pi pi-calendar text-lg md:text-xl" />
             </div>
             <div>
-              <p class="font-bold text-slate-900">{{ dayjs(shift.opened_at).format('DD MMMM YYYY') }}</p>
-              <p class="text-sm text-slate-500">
-                {{ dayjs(shift.opened_at).format('HH:mm') }} - {{ dayjs(shift.closed_at).format('HH:mm') }} 
-                <span class="font-medium text-slate-400">({{ formatDuration(shift.opened_at, shift.closed_at) }})</span>
+              <p class="text-sm md:text-base font-bold text-slate-900">{{ dayjs(shift.date).format('DD MMMM YYYY') }}</p>
+              <p class="text-[10px] md:text-sm text-slate-500">
+                Terdiri dari <span class="font-bold">{{ shift.shift_count }} Shift</span>
               </p>
+              <div class="mt-1 flex gap-1 flex-wrap">
+                <span v-for="(name, idx) in shift.shifts" :key="idx" class="px-1.5 md:px-2 py-0.5 rounded text-[9px] md:text-[10px] font-bold bg-slate-200 text-slate-600">
+                  {{ name }}
+                </span>
+              </div>
             </div>
           </div>
           
-          <div class="flex items-center gap-6 sm:text-right">
+          <div class="flex items-center justify-between sm:justify-end gap-4 md:gap-6 w-full sm:w-auto mt-2 sm:mt-0 sm:text-right border-t border-slate-200 sm:border-0 pt-2 sm:pt-0">
             <div>
-              <p class="text-xs font-bold uppercase text-slate-400">Kasir</p>
-              <p class="text-sm font-semibold text-slate-800">{{ shift.cashier?.name || 'Unknown' }}</p>
+              <p class="text-[9px] md:text-xs font-bold uppercase text-slate-400">Total Transaksi</p>
+              <p class="text-xs md:text-sm font-bold text-slate-900">{{ shift.total_transactions }}</p>
             </div>
             <div>
-              <p class="text-xs font-bold uppercase text-slate-400">Pesanan</p>
-              <p class="text-sm font-bold text-slate-900">{{ shift.total_transactions }}</p>
+              <p class="text-[9px] md:text-xs font-bold uppercase text-slate-400">Total Pendapatan</p>
+              <p class="text-xs md:text-sm font-black text-emerald-600">{{ formatRupiah(shift.total_revenue) }}</p>
+              <div class="flex gap-2 mt-0.5">
+                <span class="text-[8px] font-medium text-slate-400">Tunai: <span class="text-slate-600 font-bold">{{ formatRupiah(shift.cash_revenue || 0) }}</span></span>
+                <span class="text-[8px] text-slate-300">|</span>
+                <span class="text-[8px] font-medium text-slate-400">QRIS: <span class="text-blue-500 font-bold">{{ formatRupiah(shift.qris_revenue || 0) }}</span></span>
+              </div>
             </div>
-            <div>
-              <p class="text-xs font-bold uppercase text-slate-400">Pendapatan</p>
-              <p class="text-sm font-black text-emerald-600">{{ formatRupiah(shift.total_revenue) }}</p>
+            <div class="flex items-center gap-2">
+              <button @click="(e) => printDaily(shift.date, e)" :disabled="isPrinting === shift.date" class="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50 shrink-0" title="Print Struk Harian">
+                <i :class="isPrinting === shift.date ? 'pi pi-spin pi-spinner' : 'pi pi-print'"></i>
+              </button>
+              <i class="pi pi-chevron-right text-slate-400 text-sm ml-1" />
             </div>
-            <i class="pi pi-chevron-right text-slate-400 ml-2" />
           </div>
         </div>
 

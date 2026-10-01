@@ -4,7 +4,6 @@ import AppAlert from '@/components/common/AppAlert.vue'
 import AppButton from '@/components/common/AppButton.vue'
 import CashPayment from '@/components/payment/CashPayment.vue'
 import QrisPayment from '@/components/payment/QrisPayment.vue'
-import TransferPayment from '@/components/payment/TransferPayment.vue'
 import OrderSummary from '@/components/order/OrderSummary.vue'
 import { createOrder } from '@/api/orders'
 import { fetchTables } from '@/api/tables'
@@ -12,7 +11,9 @@ import { usePayment } from '@/composables/usePayment'
 import { useAuthStore } from '@/stores/auth.store'
 import { useCartStore } from '@/stores/cart.store'
 import { useOrderStore } from '@/stores/order.store'
+import { useOfflineStore } from '@/stores/offline.store'
 import { formatRupiah } from '@/utils/currency'
+import client from '@/api/client'
 
 const props = defineProps({
   show: {
@@ -26,6 +27,7 @@ const emit = defineEmits(['close', 'paid'])
 const authStore = useAuthStore()
 const cartStore = useCartStore()
 const orderStore = useOrderStore()
+const offlineStore = useOfflineStore()
 const payment = usePayment()
 
 const step = ref(1)
@@ -35,13 +37,26 @@ const loadingTables = ref(false)
 const paymentMethods = [
   { id: 'cash', label: 'Tunai', icon: 'pi-money-bill', color: 'bg-emerald-500' },
   { id: 'qris', label: 'QRIS', icon: 'pi-qrcode', color: 'bg-sky-500' },
-  { id: 'transfer', label: 'Transfer', icon: 'pi-building-columns', color: 'bg-violet-500' },
 ]
 
+const nameError = ref(false)
+const activeIdempotencyKey = ref(null)
+const pendingOrderData = ref(null)
+const showNetworkModal = ref(false)
+const networkErrorMsg = ref('')
+
 const canProceedStep1 = computed(() => {
-  if (cartStore.orderType === 'dine_in' && !cartStore.tableId) return false
-  return true
+  return cartStore.customerName?.trim().length > 0
 })
+
+const tryNextStep = () => {
+  if (!canProceedStep1.value) {
+    nameError.value = true
+    return
+  }
+  nameError.value = false
+  nextStep()
+}
 
 const cashReceivedNum = computed(() =>
   Number(String(payment.cashReceived.value).replace(/\D/g, '') || 0),
@@ -80,6 +95,10 @@ const loadTables = async () => {
 const resetModal = () => {
   step.value = 1
   payment.resetPayment()
+  activeIdempotencyKey.value = null
+  pendingOrderData.value = null
+  showNetworkModal.value = false
+  networkErrorMsg.value = ''
 }
 
 watch(
@@ -129,14 +148,51 @@ const setOrderType = (type) => {
   }
 }
 
+const proceedOfflineOrder = async () => {
+  if (!pendingOrderData.value) return
+  payment.isProcessing.value = true
+  try {
+    const { payload, methodData, orderTotal, items } = pendingOrderData.value
+    const offlineResult = await orderStore.saveOfflineOrder(payload, methodData, orderTotal, items)
+    showNetworkModal.value = false
+    emit('paid', {
+      order: offlineResult.order,
+      payment: offlineResult.payment,
+      receipt_data: offlineResult.payment.receipt_data,
+      change_amount: offlineResult.payment.change_amount,
+    })
+  } catch (offlineErr) {
+    console.error('Offline save failed:', offlineErr)
+    payment.error.value = 'Gagal menyimpan pesanan offline: ' + (offlineErr.message || offlineErr)
+    showNetworkModal.value = false
+  } finally {
+    payment.isProcessing.value = false
+  }
+}
+
+const retryOnlineOrder = async () => {
+  showNetworkModal.value = false
+  await handleConfirm()
+}
+
 const handleConfirm = async () => {
   if (!canConfirm.value) return
 
+  // Inisialisasi idempotency key untuk sesi transaksi ini jika belum ada (akan dipertahankan saat retry)
+  if (!activeIdempotencyKey.value) {
+    activeIdempotencyKey.value = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : 'kpx-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9)
+  }
+
   payment.isProcessing.value = true
   payment.error.value = null
+  showNetworkModal.value = false
 
   try {
     const payload = cartStore.buildOrderPayload(authStore.outletId, authStore.shift?.id)
+    payload.idempotency_key = activeIdempotencyKey.value
+
     const amount = currentMethod.value === 'cash' ? cashReceivedNum.value : cartStore.total
     const methodData = {
       payment_method: currentMethod.value,
@@ -144,19 +200,60 @@ const handleConfirm = async () => {
       reference_number: payment.referenceNumber.value || null,
     }
 
-    if (!navigator.onLine) {
-      // PROSES OFFLINE
-      const offlineResult = await orderStore.saveOfflineOrder(payload, methodData, cartStore.total, cartStore.items)
+    // Simpan snapshot untuk kebutuhan retry atau switch ke offline mode
+    pendingOrderData.value = {
+      payload,
+      methodData,
+      orderTotal: cartStore.total,
+      items: cartStore.items,
+    }
+
+    if (cartStore.isEditingOrder) {
+      if (cartStore.editingOriginalOrder?.is_offline) {
+        // Jika yang diedit adalah transaksi offline yang belum tersinkronisasi
+        const { useOrderStore } = await import('@/stores/order.store')
+        const orderStore = useOrderStore()
+        await orderStore.cancelOrder(cartStore.editingOrderId)
+        
+        const offlineResult = await orderStore.saveOfflineOrder(payload, methodData, cartStore.total, cartStore.items)
+        emit('paid', {
+          order: offlineResult.order,
+          payment: offlineResult.payment,
+          receipt_data: offlineResult.payment.receipt_data,
+          change_amount: offlineResult.payment.change_amount,
+        })
+        return
+      }
+
+      if (!navigator.onLine) {
+        throw new Error('Tidak dapat mengajukan edit transaksi server dalam mode offline.')
+      }
+      const editPayload = {
+        ...payload,
+        payment_method: currentMethod.value,
+        tendered_amount: amount,
+        cashier_name: authStore.user?.name || 'Kasir',
+        edited_at: new Date().toISOString(),
+      }
+      
+      await client.post(`/pos/orders/${cartStore.editingOrderId}/request-edit`, {
+        reason: cartStore.editingOrderReason,
+        edit_payload: editPayload
+      })
+      
       emit('paid', {
-        order: offlineResult.order,
-        payment: offlineResult.payment,
-        receipt_data: offlineResult.payment.receipt_data,
-        change_amount: offlineResult.payment.change_amount,
+        is_edit_request: true,
       })
       return
     }
 
-    const order = await createOrder(payload)
+    if (offlineStore.isOffline || !navigator.onLine) {
+      // Perangkat offline atau mode offline manual aktif
+      await proceedOfflineOrder()
+      return
+    }
+
+    const order = await createOrder(payload, { idempotencyKey: activeIdempotencyKey.value })
     const result = await payment.processPayment(order.id, methodData, cartStore.total)
 
     emit('paid', {
@@ -166,23 +263,19 @@ const handleConfirm = async () => {
       change_amount: result.change_amount ?? 0,
     })
   } catch (err) {
-    if (!navigator.onLine || err.message === 'Network Error' || err.name === 'TypeError') {
-       try {
-         // Coba simpan sebagai offline fallback jika gagal di tengah jalan
-         const payload = cartStore.buildOrderPayload(authStore.outletId, authStore.shift?.id)
-         const amount = currentMethod.value === 'cash' ? cashReceivedNum.value : cartStore.total
-         const methodData = { payment_method: currentMethod.value, amount, reference_number: payment.referenceNumber.value || null }
-         const offlineResult = await orderStore.saveOfflineOrder(payload, methodData, cartStore.total, cartStore.items)
-         emit('paid', {
-           order: offlineResult.order,
-           payment: offlineResult.payment,
-           receipt_data: offlineResult.payment.receipt_data,
-           change_amount: offlineResult.payment.change_amount,
-         })
-       } catch (offlineErr) {
-         console.error('Offline save failed:', offlineErr)
-         payment.error.value = 'Offline Error: ' + (offlineErr.message || offlineErr)
-       }
+    const isNetworkOrServerError = 
+      !navigator.onLine || 
+      err.message === 'Network Error' || 
+      err.name === 'TypeError' ||
+      err.code === 'ECONNABORTED' ||
+      err.code === 'ERR_NETWORK' ||
+      (err.response && err.response.status >= 500)
+
+    if (isNetworkOrServerError) {
+      networkErrorMsg.value = !navigator.onLine
+        ? 'Perangkat Anda sedang tidak terhubung ke jaringan internet.'
+        : (err.response?.data?.message || err.message || 'Tidak dapat terhubung ke server kasir.')
+      showNetworkModal.value = true
     } else {
       // Tampilkan error ke UI jika bukan masalah jaringan (misal validasi backend)
       const errorMsg = err.response?.data?.message || err.message || 'Gagal memproses pesanan.'
@@ -228,49 +321,58 @@ const handleConfirm = async () => {
             <!-- Error hanya tampil saat ada pesan error aktual -->
             <AppAlert v-if="hasError" type="error" :message="errorMessage" class="mb-4" />
 
-            <!-- Step 1: Order type -->
+            <!-- Step 1: Input Nama -->
             <div v-if="step === 1" class="space-y-5">
-              <p class="text-sm text-slate-500">Pilih tipe order untuk melanjutkan.</p>
+              <p class="text-sm text-slate-500">Masukkan nama pelanggan untuk pesanan ini.</p>
 
-              <div class="flex gap-2">
-                <button
-                  type="button"
-                  class="flex-1 rounded-xl py-3 text-sm font-bold transition"
-                  :class="
-                    cartStore.orderType === 'dine_in'
-                      ? 'bg-merchant-primary text-white shadow-lg'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  "
-                  @click="setOrderType('dine_in')"
-                >
-                  Dine In
-                </button>
-                <button
-                  type="button"
-                  class="flex-1 rounded-xl py-3 text-sm font-bold transition"
-                  :class="
-                    cartStore.orderType === 'take_away'
-                      ? 'bg-merchant-primary text-white shadow-lg'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  "
-                  @click="setOrderType('take_away')"
-                >
-                  Take Away
-                </button>
+              <div>
+                <label class="mb-2 block text-xs font-bold uppercase text-slate-400">Nama Pelanggan <span class="text-rose-500">*</span></label>
+                <input
+                  v-model="cartStore.customerName"
+                  type="text"
+                  placeholder="Contoh: Budi, Ani, Meja 3..."
+                  :class="[
+                    'w-full rounded-xl border px-4 py-3 font-semibold focus:outline-none focus:ring-2',
+                    nameError && !canProceedStep1
+                      ? 'border-rose-400 focus:border-rose-400 focus:ring-rose-400/20'
+                      : 'border-slate-200 focus:border-merchant-primary focus:ring-merchant-primary/20'
+                  ]"
+                  @keyup.enter="tryNextStep"
+                  @input="nameError = false"
+                />
+                <p v-if="nameError && !canProceedStep1" class="mt-1.5 text-xs font-semibold text-rose-500">
+                  <i class="pi pi-exclamation-circle mr-1" />Nama pelanggan wajib diisi sebelum melanjutkan.
+                </p>
               </div>
 
-              <div v-if="cartStore.orderType === 'dine_in'">
-                <label class="mb-2 block text-xs font-bold uppercase text-slate-400">Pilih Meja</label>
-                <select
-                  :value="cartStore.tableId ?? ''"
-                  class="w-full rounded-xl border border-slate-200 px-4 py-3 font-semibold"
-                  @change="cartStore.setTable($event.target.value ? Number($event.target.value) : null)"
-                >
-                  <option value="">Pilih meja...</option>
-                  <option v-for="table in tables" :key="table.id" :value="table.id">
-                    {{ table.table_number }}{{ table.name ? ` — ${table.name}` : '' }}
-                  </option>
-                </select>
+              <!-- Diskon Section -->
+              <div class="pt-4 border-t border-slate-100">
+                <label class="block text-xs font-bold uppercase text-slate-400 mb-3">Diskon Manual (Opsional)</label>
+                <div class="grid grid-cols-2 gap-1 mb-3 rounded-xl bg-slate-100 p-1 text-sm font-bold">
+                  <button type="button" @click="cartStore.discountType = 'nominal'" class="rounded-lg py-2 transition flex items-center justify-center gap-1.5" :class="cartStore.discountType === 'nominal' ? 'bg-white text-merchant-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'">Nominal (Rp)</button>
+                  <button type="button" @click="cartStore.discountType = 'percentage'" class="rounded-lg py-2 transition flex items-center justify-center gap-1.5" :class="cartStore.discountType === 'percentage' ? 'bg-white text-merchant-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'">Persentase (%)</button>
+                </div>
+                
+                <div v-if="cartStore.discountType" class="relative">
+                  <span v-if="cartStore.discountType === 'nominal'" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">Rp</span>
+                  <span v-if="cartStore.discountType === 'percentage'" class="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">%</span>
+                  <input
+                    v-model.number="cartStore.discountValue"
+                    type="number"
+                    :placeholder="cartStore.discountType === 'nominal' ? '0' : '0'"
+                    min="0"
+                    :max="cartStore.discountType === 'percentage' ? 100 : undefined"
+                    class="w-full rounded-xl border border-slate-200 py-3 font-semibold focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
+                    :class="cartStore.discountType === 'nominal' ? 'pl-11 pr-4' : 'pl-4 pr-11'"
+                    @keyup.enter="tryNextStep"
+                  />
+                </div>
+                <div v-if="cartStore.discountType" class="mt-2 flex justify-between items-center">
+                  <p class="text-xs text-slate-500">
+                    Potongan: <span class="font-bold text-slate-700">{{ formatRupiah(cartStore.discountAmount) }}</span>
+                  </p>
+                  <button type="button" @click="cartStore.discountType = null; cartStore.discountValue = null" class="text-xs text-rose-500 hover:text-rose-600 font-bold">Hapus Diskon</button>
+                </div>
               </div>
             </div>
 
@@ -329,14 +431,6 @@ const handleConfirm = async () => {
                 :loading="isProcessing"
                 @confirm="handleConfirm"
               />
-
-              <TransferPayment
-                v-else-if="currentMethod === 'transfer'"
-                v-model="payment.referenceNumber.value"
-                :total="cartStore.total"
-                :loading="isProcessing"
-                @confirm="handleConfirm"
-              />
             </div>
           </div>
 
@@ -358,8 +452,7 @@ const handleConfirm = async () => {
               <AppButton
                 v-if="step === 1"
                 class="flex-1"
-                :disabled="!canProceedStep1"
-                @click="nextStep"
+                @click="tryNextStep"
               >
                 Lanjut
                 <i class="pi pi-arrow-right" />
@@ -373,11 +466,75 @@ const handleConfirm = async () => {
                 :disabled="!canConfirm"
                 @click="handleConfirm"
               >
-                <i class="pi pi-check" />
-                Konfirmasi Bayar — {{ formatRupiah(cartStore.total) }}
+                {{ cartStore.isEditingOrder ? 'Ajukan Perubahan —' : 'Konfirmasi Bayar' }}
               </AppButton>
             </div>
           </footer>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Modal Dialog Gangguan Jaringan (Offline Manual Confirmation) -->
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="opacity-0 scale-95"
+      enter-to-class="opacity-100 scale-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="opacity-100 scale-100"
+      leave-to-class="opacity-0 scale-95"
+    >
+      <div
+        v-if="showNetworkModal"
+        class="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+      >
+        <div class="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 space-y-5 text-center">
+          <div class="h-16 w-16 mx-auto rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200 shadow-inner">
+            <i class="pi pi-wifi text-3xl" />
+          </div>
+
+          <div>
+            <h3 class="text-xl font-black text-slate-900">Koneksi Bermasalah</h3>
+            <p class="text-xs md:text-sm text-slate-500 mt-1.5 leading-relaxed">
+              {{ networkErrorMsg || 'Gagal terhubung ke server. Pesanan belum dapat dipastikan tersimpan online.' }}
+            </p>
+          </div>
+
+          <div class="rounded-xl bg-amber-50/70 border border-amber-200/70 p-3 text-left flex items-start gap-2.5 text-xs text-amber-800">
+            <i class="pi pi-info-circle text-amber-600 text-sm mt-0.5 shrink-0" />
+            <p class="leading-snug">
+              Jika Anda memilih <strong>Mode Offline</strong>, pesanan akan disimpan di perangkat ini dan otomatis disinkronkan tanpa membuat transaksi ganda.
+            </p>
+          </div>
+
+          <div class="space-y-2.5 pt-1">
+            <button
+              type="button"
+              class="w-full py-3.5 px-4 rounded-xl font-black text-sm bg-merchant-primary text-white hover:brightness-110 active:scale-[0.99] transition shadow-md flex items-center justify-center gap-2"
+              :disabled="isProcessing"
+              @click="retryOnlineOrder"
+            >
+              <i class="pi pi-refresh" :class="{ 'animate-spin': isProcessing }" />
+              Coba Lagi (Online)
+            </button>
+
+            <button
+              type="button"
+              class="w-full py-3.5 px-4 rounded-xl font-bold text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 active:scale-[0.99] transition border border-slate-200 flex items-center justify-center gap-2"
+              :disabled="isProcessing"
+              @click="proceedOfflineOrder"
+            >
+              <i class="pi pi-cloud-download" />
+              Lanjut Simpan Mode Offline
+            </button>
+
+            <button
+              type="button"
+              class="w-full py-2 text-xs font-bold text-slate-400 hover:text-slate-600 transition"
+              @click="showNetworkModal = false"
+            >
+              Kembali ke Pembayaran
+            </button>
+          </div>
         </div>
       </div>
     </Transition>

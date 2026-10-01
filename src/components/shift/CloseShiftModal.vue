@@ -5,11 +5,13 @@ import AppAlert from '@/components/common/AppAlert.vue'
 import AppButton from '@/components/common/AppButton.vue'
 import AppModal from '@/components/common/AppModal.vue'
 import AppNumpad from '@/components/common/AppNumpad.vue'
-import AppCreatableSelect from '@/components/common/AppCreatableSelect.vue'
-import { closeShift, fetchShiftSummary, fetchExpenseCategories } from '@/api/shifts'
+import { closeShift, fetchShiftSummary } from '@/api/shifts'
 import { useAuthStore } from '@/stores/auth.store'
+import { useOrderStore } from '@/stores/order.store'
 import { formatRupiah } from '@/utils/currency'
 import { PAYMENT_METHOD_LABELS } from '@/utils/shift'
+import { db } from '@/utils/db'
+import { enqueue, SYNC_TYPE } from '@/services/SyncService'
 
 const props = defineProps({
   show: {
@@ -22,35 +24,21 @@ const emit = defineEmits(['close', 'closed'])
 
 const router = useRouter()
 const authStore = useAuthStore()
+const orderStore = useOrderStore()
+
+const isOfflineClose = ref(false)
+
+const step = ref(0)
+
+const picName = ref('')
 
 const summary = ref(null)
 const closingCash = ref('')
-const notes = ref('')
 const loading = ref(false)
 const loadingSummary = ref(false)
 const error = ref('')
 const apiWarnings = ref([])
 
-const expenses = ref([])
-const expenseCategories = ref([])
-
-const addExpense = () => {
-  expenses.value.push({ category: '', qty: 1, price_per_item: '', amount: 0 })
-}
-
-const removeExpense = (index) => {
-  expenses.value.splice(index, 1)
-}
-
-const calculateExpenseAmount = (exp) => {
-  const qty = Number(exp.qty) || 0
-  const price = Number(String(exp.price_per_item).replace(/\D/g, '')) || 0
-  exp.amount = qty * price
-}
-
-const totalExpenses = computed(() => {
-  return expenses.value.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0)
-})
 
 const paymentRows = computed(() => {
   if (!summary.value?.payments_by_method) return []
@@ -65,8 +53,7 @@ const paymentRows = computed(() => {
 })
 
 const systemCash = computed(() => {
-  const base = Number(summary.value?.system_cash ?? 0)
-  return base - totalExpenses.value
+  return Number(summary.value?.system_cash ?? 0)
 })
 const threshold = computed(() => Number(summary.value?.cash_diff_threshold ?? 10000))
 
@@ -82,15 +69,34 @@ const loadSummary = async () => {
   loadingSummary.value = true
   error.value = ''
   try {
-    const [summaryData, categories] = await Promise.all([
-      fetchShiftSummary(authStore.user?.outlet_id),
-      fetchExpenseCategories(),
-    ])
+    const summaryData = await fetchShiftSummary(authStore.user?.outlet_id)
     summary.value = summaryData
-    expenseCategories.value = categories.map(c => ({ label: c, value: c }))
   } catch (err) {
-    error.value = err.response?.data?.message || 'Gagal memuat ringkasan shift.'
-    summary.value = null
+    const isNetworkError = !navigator.onLine ||
+      err.message === 'Network Error' ||
+      err.name === 'TypeError' ||
+      err.code === 'ECONNABORTED' ||
+      (err.response && err.response.status >= 500)
+    
+    if (isNetworkError) {
+      // Hitung dari IndexedDB: order yang ada di shift ini
+      isOfflineClose.value = true
+      const offlineOrders = await db.offline_orders.toArray()
+      const completed = offlineOrders.filter(o => o.sync_status !== 'cancelled')
+      const totalRevenue = completed.reduce((sum, o) => sum + (o.methodData?.amount ?? 0), 0)
+      summary.value = {
+        total_transactions: completed.length,
+        total_revenue: totalRevenue,
+        system_cash: Number(authStore.shift?.opening_cash ?? 0) + totalRevenue,
+        payments_by_method: {},
+        cash_diff_threshold: 10000,
+        is_offline_summary: true,
+      }
+      error.value = 'Mode Offline: Ringkasan dikalkulasi dari data lokal.'
+    } else {
+      error.value = err.response?.data?.message || 'Gagal memuat ringkasan shift.'
+      summary.value = null
+    }
   } finally {
     loadingSummary.value = false
   }
@@ -100,9 +106,9 @@ watch(
   () => props.show,
   (visible) => {
     if (visible) {
+      step.value = 0
+      picName.value = authStore.user?.name ?? ''
       closingCash.value = ''
-      notes.value = ''
-      expenses.value = []
       apiWarnings.value = []
       loadSummary()
     }
@@ -122,34 +128,95 @@ const submitCloseShift = async () => {
 
   loading.value = true
   try {
-    const formattedExpenses = expenses.value
-      .filter(e => e.category && Number(e.amount) > 0)
-      .map(e => ({
-        category: e.category,
-        qty: Number(e.qty) || 1,
-        price_per_item: Number(String(e.price_per_item).replace(/\D/g, '')) || 0,
-        amount: Number(e.amount),
-      }))
-
-    const response = await closeShift({
+    const closePayload = {
       closing_cash: closingCashAmount.value,
-      notes: notes.value.trim() || null,
-      expenses: formattedExpenses,
-    })
-
-    authStore.setShift(null)
-    apiWarnings.value = response.warnings ?? []
-
-    emit('closed', response.data)
-    emit('close')
-
-    if (apiWarnings.value.length) {
-      window.alert(apiWarnings.value.join('\n'))
+      notes: picName.value ? `Penanggung Jawab: ${picName.value}` : null,
+      expenses: [],
     }
 
-    router.push({ name: 'shift-open' })
-  } catch (err) {
-    error.value = err.data?.message || err.response?.data?.message || 'Gagal menutup shift.'
+    try {
+      const response = await closeShift(closePayload)
+      authStore.setShift(null)
+      apiWarnings.value = response.warnings ?? []
+      
+      // Auto-print struk termal otomatis sebelum keluar shift
+      try {
+        const { fetchShiftReceipt, fetchDailyShiftReceipt } = await import('@/api/shifts')
+        const { usePrinter } = await import('@/composables/usePrinter')
+        const printer = usePrinter()
+        
+        const scheduleName = (response.data?.schedule?.name || authStore.shift?.schedule?.name || '').toLowerCase()
+        const todayDate = new Date().toISOString().split('T')[0]
+        
+        let receiptData
+        if (scheduleName.includes('malam') || scheduleName.includes('night') || scheduleName.includes('2')) {
+          // Shift Malam: Cetak Ringkasan Harian (Shift Pagi + Malam + Total Harian)
+          receiptData = await fetchDailyShiftReceipt(todayDate)
+        } else if (response.data?.id) {
+          // Shift Pagi: Cetak struk shift individual
+          receiptData = await fetchShiftReceipt(response.data.id)
+        }
+
+        let lines = receiptData?.receipt_lines || receiptData?.data?.receipt_lines
+        if (lines && lines.length > 0) {
+          // Filter agar tidak ada bagian stok kritis / bahan baku menipis
+          let inLowStockSection = false
+          lines = lines.filter((l) => {
+            const txt = (l.text || l.left || '').toUpperCase()
+            if (txt.includes('BAHAN BAKU MENIPIS') || txt.includes('STOK KRITIS')) {
+              inLowStockSection = true
+              return false
+            }
+            if (inLowStockSection) {
+              if (l.type === 'separator') {
+                inLowStockSection = false
+                return false
+              }
+              return false
+            }
+            return true
+          })
+          await printer.printShiftReceipt(lines)
+        }
+      } catch (err) {
+        console.error('Gagal cetak struk shift otomatis', err)
+      }
+
+      emit('closed', response.data)
+      emit('close')
+      if (apiWarnings.value.length) {
+        window.alert(apiWarnings.value.join('\n'))
+      }
+      router.push({ name: 'shift-open' })
+    } catch (err) {
+      const isNetworkError = !navigator.onLine ||
+        err.message === 'Network Error' ||
+        err.name === 'TypeError' ||
+        err.code === 'ECONNABORTED' ||
+        (err.response && err.response.status >= 500)
+
+      if (isNetworkError) {
+        // OFFLINE: simpan lokal dan masukkan ke antrian sync
+        const localId = authStore.shift?.local_id ?? authStore.shift?.id
+        const now = new Date().toISOString()
+        
+        await db.shifts.where('local_id').equals(localId).modify({
+          closing_cash: closingCashAmount.value,
+          status: 'closed',
+          closed_at: now,
+          sync_status: 'pending_close',
+        }).catch(() => {})
+
+        await enqueue(SYNC_TYPE.CLOSE_SHIFT, closePayload, localId)
+
+        authStore.setShift(null)
+        emit('closed', null)
+        emit('close')
+        router.push({ name: 'shift-open' })
+      } else {
+        error.value = err.data?.message || err.response?.data?.message || 'Gagal menutup shift.'
+      }
+    }
   } finally {
     loading.value = false
   }
@@ -163,33 +230,59 @@ const submitCloseShift = async () => {
     </div>
 
     <template v-else-if="summary">
-      <div class="grid gap-6 lg:grid-cols-2">
-        <div class="space-y-4">
-          <h4 class="text-sm font-bold uppercase tracking-wider text-slate-400">Ringkasan Shift</h4>
+      <!-- Step 0: Penanggung Jawab -->
+      <div v-if="step === 0" class="space-y-6 py-2">
+        <div class="flex items-center justify-center">
+          <div class="flex h-20 w-20 items-center justify-center rounded-full bg-merchant-primary/10">
+            <i class="pi pi-user text-4xl text-merchant-primary" />
+          </div>
+        </div>
+        <div class="text-center">
+          <h3 class="text-lg font-black text-slate-900">Konfirmasi Penanggung Jawab</h3>
+          <p class="mt-1 text-sm text-slate-500">Pastikan nama penanggung jawab shift ini sudah benar sebelum melanjutkan.</p>
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-xs font-bold uppercase tracking-wider text-slate-500">Nama Penanggung Jawab</label>
+          <div class="relative">
+            <i class="pi pi-user absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              v-model="picName"
+              type="text"
+              placeholder="Nama penanggung jawab shift..."
+              class="w-full rounded-xl border border-slate-200 py-3 pl-10 pr-4 text-sm font-semibold focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
+            />
+          </div>
+          <p class="text-xs text-slate-400">Terisi otomatis dari akun yang sedang login. Dapat diubah jika diperlukan.</p>
+        </div>
+      </div>
 
-          <div class="grid gap-3 sm:grid-cols-2">
-            <div class="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-              <p class="text-xs font-bold uppercase text-slate-400">Total Transaksi</p>
-              <p class="mt-1 text-2xl font-black text-slate-900">{{ summary.total_transactions }}</p>
+      <div v-else-if="step === 1" class="grid gap-4 lg:gap-6 lg:grid-cols-2">
+        <div class="space-y-2 sm:space-y-4">
+          <h4 class="hidden sm:block text-sm font-bold uppercase tracking-wider text-slate-400">Ringkasan Shift</h4>
+
+          <div class="grid gap-2 sm:gap-3 grid-cols-2">
+            <div class="rounded-xl sm:rounded-2xl border border-slate-100 bg-slate-50 p-2 sm:p-4 text-center sm:text-left">
+              <p class="text-[10px] sm:text-xs font-bold uppercase text-slate-400">Total TRX</p>
+              <p class="mt-0.5 sm:mt-1 text-lg sm:text-2xl font-black text-slate-900">{{ summary.total_transactions }}</p>
             </div>
-            <div class="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-              <p class="text-xs font-bold uppercase text-slate-400">Pendapatan Sistem</p>
-              <p class="mt-1 text-xl font-black text-slate-900">{{ formatRupiah(summary.total_revenue) }}</p>
+            <div class="rounded-xl sm:rounded-2xl border border-slate-100 bg-slate-50 p-2 sm:p-4 text-center sm:text-left">
+              <p class="text-[10px] sm:text-xs font-bold uppercase text-slate-400">Pendapatan</p>
+              <p class="mt-0.5 sm:mt-1 text-lg sm:text-xl font-black text-slate-900">{{ formatRupiah(summary.total_revenue) }}</p>
             </div>
           </div>
 
-          <div class="rounded-2xl border border-slate-100 bg-white p-4">
-            <p class="mb-3 text-xs font-bold uppercase text-slate-400">Per Metode Bayar</p>
-            <ul v-if="paymentRows.length" class="space-y-2">
+          <div class="rounded-xl sm:rounded-2xl border border-slate-100 bg-white p-2 sm:p-4">
+            <p class="mb-1.5 sm:mb-3 text-[10px] sm:text-xs font-bold uppercase text-slate-400">Per Metode Bayar</p>
+            <ul v-if="paymentRows.length" class="space-y-1 sm:space-y-2">
               <li
                 v-for="row in paymentRows"
                 :key="row.method"
-                class="flex items-center justify-between text-sm font-semibold"
+                class="flex items-center justify-between text-xs sm:text-sm font-semibold"
               >
-                <span class="flex items-center gap-2 text-slate-600">
+                <span class="flex items-center gap-1.5 sm:gap-2 text-slate-600">
                   <i
                     :class="[
-                      'pi',
+                      'pi text-[10px] sm:text-base',
                       row.method === 'cash'
                         ? 'pi-money-bill'
                         : row.method === 'qris'
@@ -202,95 +295,21 @@ const submitCloseShift = async () => {
                 <span class="text-slate-900">{{ formatRupiah(row.total) }}</span>
               </li>
             </ul>
-            <p v-else class="text-sm text-slate-400">Belum ada pembayaran tercatat.</p>
+            <p v-else class="text-[10px] sm:text-sm text-slate-400">Belum ada pembayaran.</p>
           </div>
 
-          <div class="rounded-2xl border border-merchant-primary/20 bg-merchant-accent p-4">
-            <p class="text-xs font-bold uppercase text-slate-500">Kas Menurut Sistem</p>
-            <p class="mt-1 text-2xl font-black text-merchant-primary">{{ formatRupiah(systemCash) }}</p>
-            <p class="mt-1 text-xs text-slate-500">
-              Kas awal {{ formatRupiah(summary.opening_cash) }} + penjualan tunai bersih
-              <span v-if="totalExpenses > 0">- pengeluaran {{ formatRupiah(totalExpenses) }}</span>
+          <div class="rounded-xl sm:rounded-2xl border border-merchant-primary/20 bg-merchant-accent p-2 sm:p-4 text-center sm:text-left">
+            <p class="text-[10px] sm:text-xs font-bold uppercase text-slate-500">Kas Menurut Sistem</p>
+            <p class="mt-0.5 sm:mt-1 text-xl sm:text-2xl font-black text-merchant-primary">{{ formatRupiah(systemCash) }}</p>
+            <p class="mt-0.5 sm:mt-1 text-[9px] sm:text-xs text-slate-500">
+              Kas awal {{ formatRupiah(summary.opening_cash) }} + jualan
+              <span v-if="summary.total_expenses > 0">- keluar {{ formatRupiah(summary.total_expenses) }}</span>
             </p>
           </div>
 
-          <!-- Expenses Section -->
-          <div class="rounded-2xl border border-slate-100 bg-white p-4">
-            <div class="mb-3 flex items-center justify-between">
-              <p class="text-xs font-bold uppercase text-slate-400">Pengeluaran</p>
-              <button
-                type="button"
-                class="text-xs font-bold text-merchant-primary hover:text-merchant-primary/80"
-                @click="addExpense"
-              >
-                + Tambah
-              </button>
-            </div>
-            
-            <div v-if="expenses.length" class="space-y-4">
-              <div v-for="(exp, index) in expenses" :key="index" class="relative rounded-xl border border-slate-100 bg-slate-50 p-3">
-                <button
-                  type="button"
-                  class="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-rose-100 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors"
-                  @click="removeExpense(index)"
-                >
-                  <i class="pi pi-times text-xs" />
-                </button>
-                <div class="mb-3">
-                  <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Nama</label>
-                  <AppCreatableSelect
-                    v-model="exp.category"
-                    :options="expenseCategories"
-                    placeholder="Nama pengeluaran..."
-                  />
-                </div>
-                <div class="flex gap-2">
-                  <div class="w-16">
-                    <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Qty</label>
-                    <input
-                      v-model="exp.qty"
-                      type="number"
-                      min="1"
-                      class="w-full rounded-xl border border-slate-200 px-2 py-2 text-center text-sm font-medium focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
-                      @input="calculateExpenseAmount(exp)"
-                    />
-                  </div>
-                  <div class="flex-1">
-                    <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Harga per Item</label>
-                    <div class="relative">
-                      <span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">Rp</span>
-                      <input
-                        v-model="exp.price_per_item"
-                        type="text"
-                        class="w-full rounded-xl border border-slate-200 py-2 pl-10 pr-3 text-sm font-medium focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
-                        placeholder="0"
-                        @input="exp.price_per_item = exp.price_per_item.replace(/\D/g, ''); calculateExpenseAmount(exp)"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div class="mt-2 text-right">
-                  <p class="text-[10px] font-bold uppercase text-slate-400">Total</p>
-                  <p class="text-sm font-black text-rose-500">{{ formatRupiah(exp.amount) }}</p>
-                </div>
-              </div>
-            </div>
-            <p v-else class="text-sm text-slate-400">Tidak ada pengeluaran tambahan.</p>
-          </div>
-        </div>
-
-        <div class="space-y-4">
-          <h4 class="text-sm font-bold uppercase tracking-wider text-slate-400">Kas Fisik Saat Ini</h4>
-
-          <AppNumpad
-            v-model="closingCash"
-            confirm-label="Tutup Shift"
-            @confirm="submitCloseShift"
-          />
-
           <div
             v-if="closingCash"
-            class="rounded-2xl border p-4"
+            class="rounded-xl sm:rounded-2xl border p-2 sm:p-4 text-center sm:text-left"
             :class="
               showCashWarning
                 ? 'border-amber-300 bg-amber-50'
@@ -299,9 +318,9 @@ const submitCloseShift = async () => {
                   : 'border-slate-200 bg-slate-50'
             "
           >
-            <p class="text-xs font-bold uppercase text-slate-500">Selisih Kas</p>
+            <p class="text-[10px] sm:text-xs font-bold uppercase text-slate-500">Selisih Kas</p>
             <p
-              class="mt-1 text-2xl font-black"
+              class="mt-0.5 sm:mt-1 text-xl sm:text-2xl font-black"
               :class="
                 showCashWarning
                   ? 'text-amber-700'
@@ -314,33 +333,58 @@ const submitCloseShift = async () => {
             >
               {{ cashDifference >= 0 ? '+' : '' }}{{ formatRupiah(cashDifference) }}
             </p>
-            <p v-if="showCashWarning" class="mt-2 text-xs font-semibold text-amber-800">
+            <p v-if="showCashWarning" class="mt-1 sm:mt-2 text-[9px] sm:text-xs font-semibold text-amber-800">
               <i class="pi pi-exclamation-triangle" />
-              Selisih melebihi {{ formatRupiah(threshold) }} — pastikan perhitungan kas sudah benar.
+              Selisih melebihi {{ formatRupiah(threshold) }}
             </p>
           </div>
+        </div>
 
-          <div>
-            <label class="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-400">Catatan</label>
-            <textarea
-              v-model="notes"
-              rows="3"
-              placeholder="Opsional — misalnya selisih karena kembalian"
-              class="w-full resize-none rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
-            />
-          </div>
+        <div>
+          <h4 class="hidden sm:block text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">Kas Fisik Saat Ini</h4>
+
+          <AppNumpad
+            v-model="closingCash"
+            :show-confirm="false"
+          />
         </div>
       </div>
+
 
       <AppAlert v-if="error" type="error" :message="error" class="mt-4" dismissible @dismiss="error = ''" />
     </template>
 
     <template #footer>
-      <AppButton variant="secondary" @click="handleClose">Batal</AppButton>
-      <AppButton variant="danger" :loading="loading" @click="submitCloseShift">
-        <i class="pi pi-sign-out" />
-        Tutup Shift
-      </AppButton>
+      <div v-if="step === 0" class="flex gap-2 w-full">
+        <AppButton variant="secondary" @click="handleClose" class="flex-1">Batal</AppButton>
+        <AppButton
+          variant="primary"
+          class="flex-1"
+          :disabled="!picName.trim()"
+          @click="step = 1"
+        >
+          Lanjut Input Kas
+          <i class="pi pi-arrow-right ml-2" />
+        </AppButton>
+      </div>
+      <div v-else-if="step === 1" class="flex gap-2 w-full">
+        <AppButton variant="secondary" @click="step = 0" class="flex-1">
+          <i class="pi pi-arrow-left mr-1" />
+          <span class="hidden sm:inline">Kembali</span>
+          <span class="sm:hidden">Back</span>
+        </AppButton>
+        <AppButton 
+          variant="danger" 
+          class="flex-1"
+          :disabled="closingCashAmount < 0 || closingCash === ''"
+          :loading="loading"
+          @click="submitCloseShift"
+        >
+          <i class="pi pi-sign-out sm:mr-1" />
+          <span class="hidden sm:inline">Tutup Shift</span>
+          <span class="sm:hidden">Tutup</span>
+        </AppButton>
+      </div>
     </template>
   </AppModal>
 </template>

@@ -5,7 +5,7 @@ import { idbGet, idbSet } from '@/utils/indexeddb'
 const STORAGE_KEY = 'offline-state'
 
 export const useOfflineStore = defineStore('offline', () => {
-  const isOffline = ref(!navigator.onLine)
+  const isOffline = ref(false)
   const pendingOrders = ref([])
   const hydrated = ref(false)
 
@@ -23,14 +23,11 @@ export const useOfflineStore = defineStore('offline', () => {
       const saved = await idbGet(STORAGE_KEY)
       if (saved) {
         pendingOrders.value = saved.pendingOrders ?? []
-        if (typeof saved.isOffline === 'boolean' && navigator.onLine) {
+        if (typeof saved.isOffline === 'boolean') {
           isOffline.value = saved.isOffline
         }
       }
     } finally {
-      if (!navigator.onLine) {
-        isOffline.value = true
-      }
       hydrated.value = true
     }
   }
@@ -38,6 +35,19 @@ export const useOfflineStore = defineStore('offline', () => {
   async function setOffline(value) {
     isOffline.value = value
     await persist()
+    if (!value) {
+      // Saat beralih ke Online secara manual, jalankan sinkronisasi antrian
+      try {
+        const { processQueue } = await import('@/services/SyncService')
+        await processQueue()
+      } catch (e) {
+        console.warn('Gagal memproses antrian saat beralih ke online:', e)
+      }
+    }
+  }
+
+  async function toggleOffline() {
+    await setOffline(!isOffline.value)
   }
 
   async function addPendingOrder(order) {
@@ -69,11 +79,11 @@ export const useOfflineStore = defineStore('offline', () => {
         await removePendingOrder(pending.id)
         synced += 1
       } catch (error) {
+        failed += 1
         if (!error.response) {
-          await setOffline(true)
+          // Koneksi terputus saat sync, hentikan sisa antrian (jangan ubah mode manual)
           break
         }
-        failed += 1
       }
     }
 
@@ -86,6 +96,7 @@ export const useOfflineStore = defineStore('offline', () => {
     hydrated,
     hydrate,
     setOffline,
+    toggleOffline,
     addPendingOrder,
     removePendingOrder,
     syncPendingOrders,

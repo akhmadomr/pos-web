@@ -1,5 +1,8 @@
 <script setup>
 import { formatRupiah } from '@/utils/currency'
+import { useCartStore } from '@/stores/cart.store'
+
+const cartStore = useCartStore()
 
 defineProps({
   total: {
@@ -47,7 +50,7 @@ const emit = defineEmits(['confirm'])
     >
       <i v-if="loading" class="pi pi-spin pi-spinner" />
       <i v-else class="pi pi-check-square" />
-      Konfirmasi Dana Sudah Masuk
+      {{ cartStore.isEditingOrder ? 'Ajukan Perubahan' : 'Konfirmasi Dana Sudah Masuk' }}
     </button>
   </div>
 </template>

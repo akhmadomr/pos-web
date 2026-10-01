@@ -21,9 +21,13 @@ export function generateReceiptHTML(data, settings = {}) {
   let layout = DEFAULT_RECEIPT_LAYOUT
   try {
     if (settings.receipt?.layout) {
-      layout = JSON.parse(settings.receipt.layout)
+      if (typeof settings.receipt.layout === 'string') {
+        layout = JSON.parse(settings.receipt.layout)
+      } else if (Array.isArray(settings.receipt.layout)) {
+        layout = settings.receipt.layout
+      }
     }
-  } catch(e) {}
+  } catch(e) { console.error('Parse layout fail', e) }
 
   let htmlBody = ''
 
@@ -31,7 +35,7 @@ export function generateReceiptHTML(data, settings = {}) {
     switch(block.type) {
       case 'image':
         if (block.content) {
-          htmlBody += `<div class="center" style="margin-bottom:8px;"><img src="${escapeHtml(block.content)}" style="max-height:48px;width:auto;filter:grayscale(100%);" alt="Logo" /></div>`
+          htmlBody += `<div class="center" style="margin-bottom:8px;"><img src="${escapeHtml(block.content)}" style="max-height:24px;width:auto;filter:grayscale(100%);" alt="Logo" /></div>`
         }
         break
       case 'text':
@@ -47,8 +51,8 @@ export function generateReceiptHTML(data, settings = {}) {
         htmlBody += `
           <table style="margin:6px 0;width:100%;">
             <tr class="label-row"><td>No. Order</td><td style="text-align:right">${escapeHtml(data.order_number ?? '-')}</td></tr>
+            <tr class="label-row"><td>Pelanggan</td><td style="text-align:right">${escapeHtml(data.customer_name ?? '-')}</td></tr>
             <tr class="label-row"><td>Kasir</td><td style="text-align:right">${escapeHtml(data.cashier_name ?? '-')}</td></tr>
-            <tr class="label-row"><td>Tipe</td><td style="text-align:right">${escapeHtml(data.order_type ?? '-')}${data.table_number ? ' · Meja ' + escapeHtml(data.table_number) : ''}</td></tr>
             <tr class="label-row"><td>Waktu</td><td style="text-align:right">${escapeHtml(data.timestamp ?? '-')}</td></tr>
           </table>
           <hr class="divider-dash" style="margin-bottom:6px;"/>
@@ -57,10 +61,21 @@ export function generateReceiptHTML(data, settings = {}) {
       case 'static_items':
         htmlBody += `<table style="margin-bottom:6px;width:100%;">`
         for (const item of data.items ?? []) {
+          let baseTotal = item.unit_price * item.qty
           htmlBody += `
             <tr><td colspan="2" style="padding-bottom:0;font-weight:600">${escapeHtml(item.name)}</td></tr>
-            <tr><td style="padding-left:8px;color:#555">${item.qty}x ${formatRupiah(item.unit_price)}</td><td style="text-align:right;font-weight:600">${formatRupiah(item.total)}</td></tr>
+            <tr><td style="padding-left:8px;color:#555">${item.qty}x ${formatRupiah(item.unit_price)}</td><td style="text-align:right;font-weight:600">${formatRupiah(baseTotal)}</td></tr>
           `
+          if (item.addons_label && Number(item.addons_price) > 0) {
+            let addonsTotal = Number(item.addons_price) * Number(item.qty)
+            htmlBody += `
+              <tr><td colspan="2" style="padding-bottom:0;padding-left:8px;color:#555">+ ${escapeHtml(item.addons_label)}</td></tr>
+              <tr><td style="padding-left:16px;color:#777">${item.qty}x ${formatRupiah(item.addons_price)}</td><td style="text-align:right;color:#555">${formatRupiah(addonsTotal)}</td></tr>
+            `
+          }
+          if (item.notes) {
+            htmlBody += `<tr><td colspan="2" style="padding-bottom:0;padding-left:8px;color:#777;font-style:italic">"${escapeHtml(item.notes)}"</td></tr>`
+          }
         }
         htmlBody += `</table><hr class="divider-dash" style="margin-bottom:6px;"/>`
         break
@@ -111,7 +126,7 @@ export function generateReceiptHTML(data, settings = {}) {
 </head>
 <body>
   ${htmlBody}
-  <p class="center" style="font-size:9px;color:#777;font-weight:bold;margin-top:12px;">Powered by Kopirex POS</p>
+  <p class="center" style="font-size:9px;color:#777;font-weight:bold;margin-top:12px;">Powered by Kasir Kopirex</p>
   <script>setTimeout(function(){ window.print(); }, 500);</script>
 </body>
 </html>`
@@ -129,17 +144,37 @@ function escapeHtml(str) {
 /**
  * Format data struk untuk payload ke ESC/POS thermal server.
  */
-export function buildEscPosPayload(data, settings = {}) {
+export async function buildEscPosPayload(data, settings = {}) {
   const ts = settings.tax || {}
   let layout = DEFAULT_RECEIPT_LAYOUT
   try {
-    if (settings.receipt?.layout) layout = JSON.parse(settings.receipt.layout)
-  } catch(e) {}
+    if (settings.receipt?.layout) {
+      if (typeof settings.receipt.layout === 'string') {
+        layout = JSON.parse(settings.receipt.layout)
+      } else if (Array.isArray(settings.receipt.layout)) {
+        layout = settings.receipt.layout
+      }
+    }
+  } catch(e) { console.error('Parse layout fail', e) }
   
   const lines = []
 
-  layout.forEach(block => {
+  for (const block of layout) {
     switch(block.type) {
+      case 'image':
+        if (block.content) {
+          try {
+            // Kurangi ukuran lebar logo menjadi 100px agar ukuran lebih proporsional dan tidak terlalu besar
+            // sehingga proses print Bluetooth menjadi lebih cepat
+            const imgData = await processImageToMonochrome(block.content, 100)
+            if (imgData) {
+              lines.push({ type: 'align', value: 'center' })
+              lines.push({ type: 'image', pixels: imgData.pixels, width: imgData.width, height: imgData.height })
+              lines.push({ type: 'align', value: 'left' })
+            }
+          } catch(e) { console.error('Image render fail', e) }
+        }
+        break
       case 'text':
         if (block.content) {
           lines.push({ 
@@ -155,15 +190,22 @@ export function buildEscPosPayload(data, settings = {}) {
       case 'static_order_info':
         lines.push({ type: 'align', value: 'left' })
         lines.push({ type: 'keyvalue', key: 'No. Order', value: data.order_number ?? '-' })
+        lines.push({ type: 'keyvalue', key: 'Pelanggan', value: data.customer_name ?? '-' })
         lines.push({ type: 'keyvalue', key: 'Kasir', value: data.cashier_name ?? '-' })
-        lines.push({ type: 'keyvalue', key: 'Tipe', value: (data.order_type ?? '-') + (data.table_number ? ` · Meja ${data.table_number}` : '') })
         lines.push({ type: 'keyvalue', key: 'Waktu', value: data.timestamp ?? '-' })
         lines.push({ type: 'separator', style: 'dashed' })
         break
       case 'static_items':
         for (const item of data.items ?? []) {
           lines.push({ type: 'text', value: item.name, bold: true })
-          lines.push({ type: 'keyvalue', key: `  ${item.qty}x ${formatRupiah(item.unit_price)}`, value: formatRupiah(item.total) })
+          lines.push({ type: 'keyvalue', key: `  ${item.qty}x ${formatRupiah(item.unit_price)}`, value: formatRupiah(item.unit_price * item.qty) })
+          if (item.addons_label && Number(item.addons_price) > 0) {
+            lines.push({ type: 'text', value: `  + ${item.addons_label}`, bold: false })
+            lines.push({ type: 'keyvalue', key: `    ${item.qty}x ${formatRupiah(item.addons_price)}`, value: formatRupiah(Number(item.addons_price) * Number(item.qty)) })
+          }
+          if (item.notes) {
+             lines.push({ type: 'text', value: `  "${item.notes}"`, bold: false })
+          }
         }
         lines.push({ type: 'separator', style: 'dashed' })
         break
@@ -174,8 +216,13 @@ export function buildEscPosPayload(data, settings = {}) {
         if (data.service_charge > 0) lines.push({ type: 'keyvalue', key: 'Service', value: formatRupiah(data.service_charge) })
 
         lines.push({ type: 'separator', style: 'solid' })
-        lines.push({ type: 'keyvalue', key: 'TOTAL', value: formatRupiah(data.total_amount), bold: true, size: 2 })
-        if (ts.enabled === '0') lines.push({ type: 'text', value: 'Sudah termasuk PPN' })
+        lines.push({ type: 'keyvalue', key: 'TOTAL', value: formatRupiah(data.total_amount), bold: true })
+        
+        if (ts.enabled === '0') {
+          lines.push({ type: 'align', value: 'center' })
+          lines.push({ type: 'text', value: 'Sudah termasuk PPN' })
+          lines.push({ type: 'align', value: 'left' })
+        }
         
         lines.push({ type: 'separator', style: 'dashed' })
         lines.push({ type: 'keyvalue', key: `Bayar (${data.payment_method})`, value: formatRupiah(data.cash_received ?? data.total_amount) })
@@ -183,12 +230,57 @@ export function buildEscPosPayload(data, settings = {}) {
         lines.push({ type: 'separator', style: 'dashed' })
         break
     }
-  })
+  }
 
   lines.push({ type: 'align', value: 'center' })
-  lines.push({ type: 'text', value: 'Powered by Kopirex POS' })
+  lines.push({ type: 'text', value: 'Powered by Kasir Kopirex' })
   lines.push({ type: 'feed', lines: 3 })
   lines.push({ type: 'cut' })
 
   return { lines }
+}
+
+async function processImageToMonochrome(src, maxWidth) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      // Calculate aspect ratio keeping max width
+      let w = img.width
+      let h = img.height
+      if (w > maxWidth) {
+        h = Math.round((h * maxWidth) / w)
+        w = maxWidth
+      }
+      
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      
+      // Fill white background
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, w, h)
+      ctx.drawImage(img, 0, 0, w, h)
+      
+      const imageData = ctx.getImageData(0, 0, w, h)
+      const data = imageData.data
+      const pixels = new Uint8Array(w * h)
+      
+      // Simple threshold dithering
+      for (let i = 0; i < data.length; i += 4) {
+        // Luminance formula
+        const luminance = (0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2])
+        // if pixel is dark and not fully transparent, it's black (1)
+        if (luminance < 128 && data[i+3] > 128) {
+          pixels[i / 4] = 1
+        } else {
+          pixels[i / 4] = 0
+        }
+      }
+      
+      resolve({ pixels, width: w, height: h })
+    }
+    img.onerror = reject
+    img.src = src
+  })
 }
