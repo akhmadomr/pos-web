@@ -25,12 +25,33 @@ const loadingSubmit = ref(false)
 const error = ref('')
 const successMessage = ref('')
 
+const priceMode = ref('unit') // 'unit' | 'total'
+
 const form = ref({
   type: 'ops',
   category: '',
   qty: 1,
   price_per_item: '',
+  total_amount: '',
+  notes: '',
 })
+
+const setPriceMode = (mode) => {
+  if (priceMode.value === mode) return
+  const qty = Number(form.value.qty) || 1
+  if (mode === 'total') {
+    const price = Number(String(form.value.price_per_item).replace(/\D/g, '')) || 0
+    if (price > 0) {
+      form.value.total_amount = formatInputRupiah(Math.round(price * qty))
+    }
+  } else {
+    const total = Number(String(form.value.total_amount).replace(/\D/g, '')) || 0
+    if (total > 0 && qty > 0) {
+      form.value.price_per_item = formatInputRupiah(Math.round(total / qty))
+    }
+  }
+  priceMode.value = mode
+}
 
 const ingredients = ref([])
 
@@ -66,12 +87,26 @@ const totalExpenses = computed(() => {
 
 const amountPreview = computed(() => {
   const qty = Number(form.value.qty) || 0
-  const price = Number(String(form.value.price_per_item).replace(/\D/g, '')) || 0
-  return qty * price
+  if (priceMode.value === 'unit') {
+    const price = Number(String(form.value.price_per_item).replace(/\D/g, '')) || 0
+    return qty * price
+  } else {
+    return Number(String(form.value.total_amount).replace(/\D/g, '')) || 0
+  }
+})
+
+const unitPricePreview = computed(() => {
+  const qty = Number(form.value.qty) || 0
+  if (priceMode.value === 'unit') {
+    return Number(String(form.value.price_per_item).replace(/\D/g, '')) || 0
+  } else {
+    const total = Number(String(form.value.total_amount).replace(/\D/g, '')) || 0
+    return qty > 0 ? Math.round(total / qty) : total
+  }
 })
 
 const isValid = computed(() => {
-  return form.value.category && form.value.qty > 0 && amountPreview.value > 0
+  return form.value.category && Number(form.value.qty) > 0 && amountPreview.value > 0
 })
 
 const filterSearch = ref('')
@@ -164,12 +199,17 @@ const submitExpense = async () => {
   error.value = ''
   successMessage.value = ''
   
+  const qty = Number(form.value.qty)
+  const amount = amountPreview.value
+  const price_per_item = qty > 0 ? unitPricePreview.value : amount
+
   const payload = {
     type: form.value.type,
     category: form.value.category,
-    qty: Number(form.value.qty),
-    price_per_item: Number(String(form.value.price_per_item).replace(/\D/g, '')),
-    amount: amountPreview.value,
+    qty: qty,
+    price_per_item: price_per_item,
+    amount: amount,
+    notes: form.value.notes ? form.value.notes.trim() : null,
   }
 
   try {
@@ -195,6 +235,9 @@ const submitExpense = async () => {
     form.value.category = ''
     form.value.qty = 1
     form.value.price_per_item = ''
+    form.value.total_amount = ''
+    form.value.notes = ''
+    priceMode.value = 'unit'
     successMessage.value = 'Pengeluaran berhasil dicatat!'
     setTimeout(() => successMessage.value = '', 3000)
     
@@ -225,6 +268,9 @@ const submitExpense = async () => {
       form.value.category = ''
       form.value.qty = 1
       form.value.price_per_item = ''
+      form.value.total_amount = ''
+      form.value.notes = ''
+      priceMode.value = 'unit'
       successMessage.value = 'Pengeluaran disimpan offline. Akan tersinkron saat koneksi pulih.'
       setTimeout(() => successMessage.value = '', 4000)
     } else {
@@ -273,25 +319,77 @@ const submitCancel = async () => {
 
 const editingExpense = ref(null)
 const editReason = ref('')
-const editData = ref({ amount: '', qty: 1, price_per_item: '' })
+const editPriceMode = ref('total') // 'unit' | 'total'
+const editData = ref({ amount: '', qty: 1, price_per_item: '', total_amount: '', notes: '' })
 const loadingEdit = ref(false)
 const editErrors = ref({})
+
+const setEditPriceMode = (mode) => {
+  if (editPriceMode.value === mode) return
+  const qty = Number(editData.value.qty) || 1
+  if (mode === 'total') {
+    const price = Number(String(editData.value.price_per_item).replace(/\D/g, '')) || 0
+    if (price > 0) {
+      editData.value.total_amount = formatInputRupiah(Math.round(price * qty))
+    }
+  } else {
+    const total = Number(String(editData.value.total_amount).replace(/\D/g, '')) || 0
+    if (total > 0 && qty > 0) {
+      editData.value.price_per_item = formatInputRupiah(Math.round(total / qty))
+    }
+  }
+  editPriceMode.value = mode
+}
+
+const editAmountPreview = computed(() => {
+  const qty = Number(editData.value.qty) || 0
+  if (editPriceMode.value === 'unit') {
+    const price = Number(String(editData.value.price_per_item).replace(/\D/g, '')) || 0
+    return qty * price
+  } else {
+    return Number(String(editData.value.total_amount).replace(/\D/g, '')) || 0
+  }
+})
+
+const editUnitPricePreview = computed(() => {
+  const qty = Number(editData.value.qty) || 0
+  if (editPriceMode.value === 'unit') {
+    return Number(String(editData.value.price_per_item).replace(/\D/g, '')) || 0
+  } else {
+    const total = Number(String(editData.value.total_amount).replace(/\D/g, '')) || 0
+    return qty > 0 ? Math.round(total / qty) : total
+  }
+})
 
 const openEditModal = (exp) => {
   editingExpense.value = exp
   editReason.value = ''
   editErrors.value = {}
+  editPriceMode.value = 'total'
+  const expAmount = Math.round(Number(exp.amount))
+  const expQty = Number(exp.qty) || 1
+  const expUnitPrice = Math.round(Number(exp.price_per_item || (expAmount / expQty)))
   editData.value = { 
-    amount: formatInputRupiah(Math.round(Number(exp.amount))), 
-    qty: exp.qty, 
-    price_per_item: exp.price_per_item 
+    amount: formatInputRupiah(expAmount),
+    total_amount: formatInputRupiah(expAmount),
+    qty: expQty, 
+    price_per_item: formatInputRupiah(expUnitPrice),
+    notes: exp.notes || ''
   }
 }
 
 const submitEdit = async () => {
   editErrors.value = {}
-  if (!editData.value.amount) {
-    editErrors.value.amount = 'Harga baru (total) harus diisi.'
+  const qty = Number(editData.value.qty) || 0
+  const numericAmount = editAmountPreview.value
+  const numericPricePerItem = editUnitPricePreview.value
+
+  if (qty <= 0) {
+    editErrors.value.qty = 'Kuantitas harus lebih dari 0.'
+    return
+  }
+  if (numericAmount <= 0) {
+    editErrors.value.amount = 'Harga harus lebih dari 0.'
     return
   }
   if (!editReason.value) {
@@ -301,13 +399,13 @@ const submitEdit = async () => {
   
   loadingEdit.value = true
   try {
-    const numericAmount = Number(String(editData.value.amount).replace(/\D/g, ''))
     await requestEditExpense(editingExpense.value.id, {
       reason: editReason.value,
       amount: numericAmount,
       category: editingExpense.value.category,
-      qty: Number(editData.value.qty),
-      price_per_item: numericAmount / Number(editData.value.qty)
+      qty: qty,
+      price_per_item: numericPricePerItem,
+      notes: editData.value.notes ? editData.value.notes.trim() : null
     })
     successMessage.value = 'Pengajuan edit berhasil dikirim. Silahkan tunggu admin.'
     editingExpense.value = null
@@ -359,6 +457,33 @@ onMounted(() => {
               />
             </div>
             
+            <!-- Mode Input Harga Selector -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="text-[10px] md:text-xs font-bold uppercase tracking-wider text-slate-500">Metode Input Harga</label>
+                <div class="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200/60">
+                  <button
+                    type="button"
+                    @click="setPriceMode('unit')"
+                    class="rounded-md px-2.5 py-1 text-[10px] md:text-xs font-bold transition flex items-center gap-1"
+                    :class="priceMode === 'unit' ? 'bg-white text-merchant-primary shadow-sm' : 'text-slate-500 hover:text-slate-800'"
+                  >
+                    <i class="pi pi-tag text-[9px] md:text-[10px]" />
+                    <span>Harga Satuan</span>
+                  </button>
+                  <button
+                    type="button"
+                    @click="setPriceMode('total')"
+                    class="rounded-md px-2.5 py-1 text-[10px] md:text-xs font-bold transition flex items-center gap-1"
+                    :class="priceMode === 'total' ? 'bg-white text-merchant-primary shadow-sm' : 'text-slate-500 hover:text-slate-800'"
+                  >
+                    <i class="pi pi-calculator text-[9px] md:text-[10px]" />
+                    <span>Harga Total</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div class="flex gap-3 md:gap-4">
               <div class="w-20 md:w-24">
                 <label class="mb-1 block text-[10px] md:text-xs font-bold uppercase tracking-wider text-slate-500">Qty</label>
@@ -367,7 +492,7 @@ onMounted(() => {
                     v-model="form.qty"
                     type="number"
                     min="0.01"
-                    step="0.01"
+                    step="any"
                     class="w-full rounded-xl border border-slate-200 px-2 md:px-3 py-2 md:py-2.5 text-center text-xs md:text-sm font-medium focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
                     :class="{ 'pr-8': selectedIngredient }"
                   />
@@ -377,23 +502,52 @@ onMounted(() => {
                 </div>
               </div>
               <div class="flex-1">
-                <label class="mb-1 block text-[10px] md:text-xs font-bold uppercase tracking-wider text-slate-500">Harga Satuan</label>
+                <label class="mb-1 block text-[10px] md:text-xs font-bold uppercase tracking-wider text-slate-500">
+                  {{ priceMode === 'unit' ? 'Harga Satuan' : 'Harga Total' }}
+                </label>
                 <div class="relative">
                   <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs md:text-sm font-bold text-slate-400">Rp</span>
                   <input
+                    v-if="priceMode === 'unit'"
                     v-model="form.price_per_item"
                     type="text"
                     class="w-full rounded-xl border border-slate-200 py-2 md:py-2.5 pl-8 md:pl-10 pr-3 md:pr-4 text-xs md:text-sm font-medium focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
                     placeholder="0"
                     @input="form.price_per_item = formatInputRupiah($event.target.value)"
                   />
+                  <input
+                    v-else
+                    v-model="form.total_amount"
+                    type="text"
+                    class="w-full rounded-xl border border-slate-200 py-2 md:py-2.5 pl-8 md:pl-10 pr-3 md:pr-4 text-xs md:text-sm font-medium focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
+                    placeholder="0"
+                    @input="form.total_amount = formatInputRupiah($event.target.value)"
+                  />
                 </div>
               </div>
             </div>
             
             <div class="rounded-xl bg-slate-50 p-3 md:p-4 border border-slate-100 flex items-center justify-between">
-              <span class="text-xs md:text-sm font-bold text-slate-500">Total Harga</span>
+              <div>
+                <span class="text-xs md:text-sm font-bold text-slate-500 block">Total Pengeluaran</span>
+                <span v-if="priceMode === 'total' && Number(form.qty) > 0" class="text-[10px] md:text-xs text-slate-400 font-medium">
+                  Estimasi Satuan: {{ formatRupiah(unitPricePreview) }}{{ selectedIngredient ? ' / ' + selectedIngredient.unit : ' / item' }}
+                </span>
+                <span v-else-if="priceMode === 'unit' && Number(form.qty) > 0" class="text-[10px] md:text-xs text-slate-400 font-medium">
+                  {{ form.qty }} x {{ formatRupiah(unitPricePreview) }}
+                </span>
+              </div>
               <span class="text-base md:text-lg font-black text-merchant-primary">{{ formatRupiah(amountPreview) }}</span>
+            </div>
+
+            <div>
+              <label class="mb-1 block text-[10px] md:text-xs font-bold uppercase tracking-wider text-slate-500">Keterangan / Catatan (Opsional)</label>
+              <input
+                v-model="form.notes"
+                type="text"
+                class="w-full rounded-xl border border-slate-200 px-3 py-2 md:py-2.5 text-xs md:text-sm font-medium focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
+                placeholder="Contoh: Beli di pasar induk, bon terlampir..."
+              />
             </div>
             
             <AppButton
@@ -481,6 +635,9 @@ onMounted(() => {
                     <span class="w-1 h-1 rounded-full bg-slate-300"></span>
                     <span>{{ dayjs(exp.created_at).format('HH:mm') }}</span>
                   </div>
+                  <p v-if="exp.notes" class="text-[10px] md:text-xs text-slate-500 italic mt-0.5">
+                    <i class="pi pi-align-left text-[9px] mr-1 text-slate-400"></i>{{ exp.notes }}
+                  </p>
                 </div>
                 <div class="flex flex-col items-end gap-2">
                   <span class="text-sm md:text-base font-black text-rose-500">{{ formatRupiah(exp.amount) }}</span>
@@ -553,23 +710,99 @@ onMounted(() => {
         <AppAlert v-if="editErrors.general" type="error" :message="editErrors.general" class="mb-3" />
         
         <div class="space-y-3 mb-4">
-          <div>
-            <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Harga Baru (Total)</label>
-            <div class="relative">
-              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">Rp</span>
-              <input
-                v-model="editData.amount"
-                type="text"
-                class="w-full rounded-xl border py-2.5 pl-10 pr-4 text-sm font-medium focus:border-merchant-primary focus:outline-none"
-                :class="editErrors.amount ? 'border-rose-300' : 'border-slate-200'"
-                placeholder="0"
-                @input="editData.amount = formatInputRupiah($event.target.value)"
-              />
+          <!-- Mode Input Harga Selector di Modal Edit -->
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-bold uppercase tracking-wider text-slate-500">Metode Input Harga</label>
+            <div class="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200/60">
+              <button
+                type="button"
+                @click="setEditPriceMode('unit')"
+                class="rounded-md px-2.5 py-1 text-xs font-bold transition flex items-center gap-1"
+                :class="editPriceMode === 'unit' ? 'bg-white text-merchant-primary shadow-sm' : 'text-slate-500 hover:text-slate-800'"
+              >
+                <i class="pi pi-tag text-[10px]" />
+                <span>Harga Satuan</span>
+              </button>
+              <button
+                type="button"
+                @click="setEditPriceMode('total')"
+                class="rounded-md px-2.5 py-1 text-xs font-bold transition flex items-center gap-1"
+                :class="editPriceMode === 'total' ? 'bg-white text-merchant-primary shadow-sm' : 'text-slate-500 hover:text-slate-800'"
+              >
+                <i class="pi pi-calculator text-[10px]" />
+                <span>Harga Total</span>
+              </button>
             </div>
-            <p v-if="editErrors.amount" class="mt-1 text-xs font-medium text-rose-500">{{ editErrors.amount }}</p>
           </div>
+
+          <div class="flex gap-3">
+            <div class="w-24">
+              <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Qty</label>
+              <input
+                v-model="editData.qty"
+                type="number"
+                min="0.01"
+                step="any"
+                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-center text-sm font-medium focus:border-merchant-primary focus:outline-none"
+                :class="editErrors.qty ? 'border-rose-300' : 'border-slate-200'"
+              />
+              <p v-if="editErrors.qty" class="mt-1 text-xs font-medium text-rose-500">{{ editErrors.qty }}</p>
+            </div>
+
+            <div class="flex-1">
+              <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                {{ editPriceMode === 'unit' ? 'Harga Satuan Baru' : 'Harga Total Baru' }}
+              </label>
+              <div class="relative">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">Rp</span>
+                <input
+                  v-if="editPriceMode === 'unit'"
+                  v-model="editData.price_per_item"
+                  type="text"
+                  class="w-full rounded-xl border py-2.5 pl-10 pr-4 text-sm font-medium focus:border-merchant-primary focus:outline-none"
+                  :class="editErrors.amount ? 'border-rose-300' : 'border-slate-200'"
+                  placeholder="0"
+                  @input="editData.price_per_item = formatInputRupiah($event.target.value)"
+                />
+                <input
+                  v-else
+                  v-model="editData.total_amount"
+                  type="text"
+                  class="w-full rounded-xl border py-2.5 pl-10 pr-4 text-sm font-medium focus:border-merchant-primary focus:outline-none"
+                  :class="editErrors.amount ? 'border-rose-300' : 'border-slate-200'"
+                  placeholder="0"
+                  @input="editData.total_amount = formatInputRupiah($event.target.value)"
+                />
+              </div>
+              <p v-if="editErrors.amount" class="mt-1 text-xs font-medium text-rose-500">{{ editErrors.amount }}</p>
+            </div>
+          </div>
+
+          <div class="rounded-xl bg-slate-50 p-3 border border-slate-100 flex items-center justify-between">
+            <div>
+              <span class="text-xs font-bold text-slate-500 block">Total Pengeluaran Baru</span>
+              <span v-if="editPriceMode === 'total' && Number(editData.qty) > 0" class="text-xs text-slate-400 font-medium">
+                Estimasi Satuan: {{ formatRupiah(editUnitPricePreview) }}
+              </span>
+              <span v-else-if="editPriceMode === 'unit' && Number(editData.qty) > 0" class="text-xs text-slate-400 font-medium">
+                {{ editData.qty }} x {{ formatRupiah(editUnitPricePreview) }}
+              </span>
+            </div>
+            <span class="text-base font-black text-merchant-primary">{{ formatRupiah(editAmountPreview) }}</span>
+          </div>
+
           <div>
-            <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Alasan Edit</label>
+            <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Keterangan / Catatan (Opsional)</label>
+            <input
+              v-model="editData.notes"
+              type="text"
+              class="w-full rounded-xl border border-slate-200 p-2.5 text-sm font-medium focus:border-merchant-primary focus:outline-none"
+              placeholder="Contoh: Tambahan keterangan..."
+            />
+          </div>
+
+          <div>
+            <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Alasan Edit <span class="text-rose-500">*</span></label>
             <textarea
               v-model="editReason"
               rows="2"

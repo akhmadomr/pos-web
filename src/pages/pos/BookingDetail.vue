@@ -92,6 +92,58 @@ const getWaLink = (phone) => {
   return `https://wa.me/${clean}`
 }
 
+const displayedItems = computed(() => {
+  const items = booking.value?.items || []
+  if (!items.length) return []
+  const finalTotal = customTotal.value
+  const standardTotal = normalTotal.value
+
+  if (finalTotal <= 0 || standardTotal <= 0 || finalTotal === standardTotal) {
+    return items.map((item) => ({
+      ...item,
+      unit_price: Number(item.unit_price || 0),
+      subtotal: Number(item.subtotal || (Number(item.quantity || 1) * Number(item.unit_price || 0))),
+    }))
+  }
+
+  // Jika backend sudah mendistribusikan sehingga sum(subtotal) == finalTotal
+  const currentSum = items.reduce((acc, it) => acc + Number(it.subtotal || 0), 0)
+  if (Math.abs(currentSum - finalTotal) < 1) {
+    return items.map((item) => ({
+      ...item,
+      unit_price: Number(item.unit_price || 0),
+      subtotal: Number(item.subtotal || 0),
+    }))
+  }
+
+  const totalQty = items.reduce((acc, it) => acc + (Number(it.quantity) || 1), 0)
+  const diff = finalTotal - standardTotal
+  const unitDiff = totalQty > 0 ? diff / totalQty : 0
+
+  let accumulatedSubtotal = 0
+  return items.map((item, idx) => {
+    const isLast = idx === items.length - 1
+    const qty = Number(item.quantity) || 1
+    let itemSubtotal = 0
+    let itemUnitPrice = 0
+
+    if (isLast) {
+      itemSubtotal = Math.max(0, Math.round(finalTotal - accumulatedSubtotal))
+      itemUnitPrice = qty > 0 ? Math.round(itemSubtotal / qty) : Number(item.unit_price || 0)
+    } else {
+      itemUnitPrice = Math.round(Number(item.unit_price || 0) + unitDiff)
+      itemSubtotal = Math.round(itemUnitPrice * qty)
+      accumulatedSubtotal += itemSubtotal
+    }
+
+    return {
+      ...item,
+      unit_price: itemUnitPrice,
+      subtotal: itemSubtotal,
+    }
+  })
+})
+
 // ======================== MODAL: TAMBAH PEMBAYARAN ========================
 const showPaymentModal = ref(false)
 const isSubmittingPayment = ref(false)
@@ -130,9 +182,14 @@ const submitPayment = async () => {
 
   isSubmittingPayment.value = true
   try {
+    const isLunas = (Number(booking.value?.paid_amount ?? booking.value?.total_paid ?? 0) + Number(paymentForm.value.amount)) >= Number(booking.value?.custom_total || 0)
+    const isFirst = Number(booking.value?.paid_amount ?? booking.value?.total_paid ?? 0) <= 0
+    const paymentType = isFirst ? 'dp' : (isLunas ? 'settlement' : 'installment')
+
     await addBookingPayment(bookingId.value, {
       amount: Number(paymentForm.value.amount),
       payment_method: paymentForm.value.payment_method,
+      payment_type: paymentType,
       notes: paymentForm.value.notes?.trim() || null,
     })
     triggerAlert('Berhasil', 'Pembayaran booking berhasil dicatat', 'success')
@@ -615,101 +672,99 @@ const handlePrintBookingReceipt = async (selectedPayment = null) => {
         </div>
       </div>
 
-      <!-- Grid 2 Kolom: Pelanggan & Ringkasan Keuangan -->
+      <!-- Grid 2 Kolom: Pelanggan & Status Pembayaran & Keuangan -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-        <!-- Card 1: Informasi Pemesan (Nomor Booking di sini) -->
-        <div class="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm">
-          <h2 class="text-xs font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-3">
-            Informasi Pemesan
+        <!-- Card 1: Informasi Pemesan & Acara -->
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm space-y-4">
+          <h2 class="text-xs font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-3 flex items-center gap-2">
+            <i class="pi pi-user text-merchant-primary" />
+            <span>Informasi Pemesan & Acara</span>
           </h2>
 
-          <div class="mt-4 space-y-3 text-xs sm:text-sm">
+          <div class="space-y-3 text-xs sm:text-sm">
             <div class="flex justify-between items-center">
               <span class="text-slate-500">No. Booking:</span>
-              <span class="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded text-xs">
+              <span class="font-mono font-black text-slate-900 text-sm tracking-wide">
                 {{ booking.booking_number }}
               </span>
             </div>
+            <div class="flex justify-between items-center">
+              <span class="text-slate-500">Outlet Ditugaskan:</span>
+              <span class="inline-flex items-center gap-1.5 font-black text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-2.5 py-1 text-xs">
+                <i class="pi pi-building text-xs" />
+                <span>{{ booking.outlet?.name || '-' }}</span>
+              </span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-slate-500">Nama Pemesan:</span>
+              <span class="font-black text-slate-900">{{ booking.customer_name }}</span>
+            </div>
             <div v-if="booking.event_name" class="flex justify-between items-center">
               <span class="text-slate-500">Nama Acara:</span>
-              <span class="font-bold text-slate-800">{{ booking.event_name }}</span>
+              <span class="font-bold text-merchant-primary">{{ booking.event_name }}</span>
             </div>
             <div class="flex justify-between items-center">
-              <span class="text-slate-500">Nama:</span>
-              <span class="font-bold text-slate-900">{{ booking.customer_name }}</span>
-            </div>
-            <div class="flex justify-between items-center">
-              <span class="text-slate-500">No. WhatsApp / HP:</span>
+              <span class="text-slate-500">Kontak WhatsApp / Telp:</span>
               <div class="flex items-center gap-1.5">
-                <span class="font-bold text-slate-900">{{ booking.customer_phone || '-' }}</span>
-                <!-- Tombol chat WA: icon saja tanpa border dan bg -->
+                <span class="font-bold text-slate-900 font-mono">{{ booking.customer_phone || '-' }}</span>
                 <a
                   v-if="booking.customer_phone"
                   :href="getWaLink(booking.customer_phone)"
                   target="_blank"
                   rel="noopener"
-                  class="text-emerald-600 hover:text-emerald-700 transition p-0.5 leading-none"
-                  title="Hubungi via WhatsApp"
+                  class="text-emerald-600 hover:text-emerald-700 transition p-1 leading-none"
+                  title="Hubungi WhatsApp"
                 >
                   <i class="pi pi-whatsapp text-lg" />
                 </a>
               </div>
             </div>
-            <div class="flex justify-between items-center">
+            <div v-if="booking.customer_email" class="flex justify-between items-center">
               <span class="text-slate-500">Email:</span>
-              <span class="font-medium text-slate-700">{{ booking.customer_email || '-' }}</span>
+              <span class="font-semibold text-slate-700">{{ booking.customer_email }}</span>
             </div>
             <div class="border-t border-slate-100 pt-3">
-              <span class="text-slate-500 block mb-1">Alamat Pengiriman:</span>
-              <p class="font-medium text-slate-800 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs">
+              <span class="text-slate-500 block text-xs mb-1">Lokasi / Alamat Acara:</span>
+              <p class="font-semibold text-slate-800 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs">
                 {{ booking.customer_address || 'Tidak ada alamat khusus (Diambil di outlet)' }}
               </p>
             </div>
             <div v-if="booking.notes" class="border-t border-slate-100 pt-3">
-              <span class="text-slate-500 block mb-1">Catatan:</span>
+              <span class="text-slate-500 block text-xs mb-1">Catatan Tambahan:</span>
               <p class="font-medium text-slate-700 italic bg-amber-50/50 p-2.5 rounded-xl border border-amber-100 text-xs">
-                {{ booking.notes }}
+                "{{ booking.notes }}"
               </p>
             </div>
           </div>
         </div>
 
-        <!-- Card 2: Ringkasan Keuangan (Kata-kata rapi, tanpa kata 'kesepakatan') -->
+        <!-- Card 2: Status Pembayaran & Keuangan -->
         <div class="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm flex flex-col justify-between">
           <div>
-            <h2 class="text-xs font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-3">
-              Ringkasan Keuangan
+            <h2 class="text-xs font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-3 flex items-center gap-2">
+              <i class="pi pi-wallet text-merchant-primary" />
+              <span>Status Pembayaran & Keuangan</span>
             </h2>
 
             <div class="mt-4 space-y-3 text-xs sm:text-sm">
               <div class="flex justify-between items-center">
-                <span class="text-slate-500">Harga Katalog:</span>
-                <span class="font-semibold text-slate-600">{{ formatRupiah(normalTotal) }}</span>
+                <span class="text-slate-500">Total Normal Katalog:</span>
+                <span class="font-bold text-slate-600 font-mono">{{ formatRupiah(normalTotal) }}</span>
               </div>
               <div class="flex justify-between items-baseline">
-                <span class="font-bold text-slate-900">Total Tagihan:</span>
-                <span class="text-base sm:text-lg font-black text-slate-900">{{ formatRupiah(customTotal) }}</span>
-              </div>
-
-              <!-- Penyesuaian Harga (Diskon / Tambahan) -->
-              <div v-if="normalTotal > customTotal" class="flex justify-between items-center text-amber-800 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200">
-                <span class="font-bold">Potongan Harga:</span>
-                <span class="font-black">-{{ formatRupiah(normalTotal - customTotal) }} ({{ Math.round(((normalTotal - customTotal) / (normalTotal || 1)) * 100) }}%)</span>
-              </div>
-              <div v-else-if="customTotal > normalTotal" class="flex justify-between items-center text-emerald-800 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200">
-                <span class="font-bold">Biaya Tambahan:</span>
-                <span class="font-black">+{{ formatRupiah(customTotal - normalTotal) }}</span>
+                <span class="font-black text-slate-900">Total Tagihan:</span>
+                <span class="text-lg font-black text-merchant-primary font-mono">{{ formatRupiah(customTotal) }}</span>
               </div>
 
               <div class="flex justify-between items-center">
-                <span class="text-slate-500">Sudah Terbayar:</span>
-                <span class="font-bold text-emerald-600">{{ formatRupiah(paidAmount) }}</span>
+                <span class="text-slate-500">Total Sudah Dibayar:</span>
+                <span class="font-bold text-emerald-600 font-mono">{{ formatRupiah(paidAmount) }}</span>
               </div>
 
               <div class="flex justify-between items-center border-t border-slate-100 pt-3">
                 <span class="font-bold text-slate-900">Sisa Tagihan:</span>
                 <span
-                  class="text-base font-black"
+                  class="text-base font-black font-mono"
                   :class="remainingAmount > 0 ? 'text-rose-600' : 'text-emerald-600'"
                 >
                   {{ remainingAmount > 0 ? formatRupiah(remainingAmount) : 'LUNAS' }}
@@ -725,8 +780,7 @@ const handlePrintBookingReceipt = async (selectedPayment = null) => {
               </div>
               <div class="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
                 <div
-                  class="h-full rounded-full transition-all duration-500"
-                  :class="paymentPercentage >= 100 ? 'bg-emerald-500' : 'bg-amber-500'"
+                  class="h-full rounded-full transition-all duration-500 bg-merchant-primary"
                   :style="{ width: `${paymentPercentage}%` }"
                 ></div>
               </div>
@@ -734,35 +788,45 @@ const handlePrintBookingReceipt = async (selectedPayment = null) => {
           </div>
 
           <div v-if="remainingAmount > 0 && booking.status !== 'cancelled' && booking.status !== 'executed'" class="mt-4 sm:mt-5">
-            <AppButton @click="openPaymentModal" class="w-full py-2.5 text-xs font-bold">
-              Catat Pembayaran
-            </AppButton>
+            <button
+              type="button"
+              @click="openPaymentModal"
+              class="w-full rounded-xl bg-merchant-primary hover:bg-merchant-primary/90 text-white py-2.5 text-xs sm:text-sm font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
+            >
+              <i class="pi pi-credit-card text-xs" />
+              <span>+ Catat Pembayaran / Pelunasan</span>
+            </button>
           </div>
         </div>
       </div>
 
-      <!-- Card 3: Daftar Menu Pesanan (Aksen warna merchant-primary pada label varian/add-on) -->
+      <!-- Card 3: Daftar Menu Pesanan -->
       <div class="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm">
-        <h2 class="text-xs font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-3">
-          Menu Pesanan ({{ booking.items?.length || 0 }})
-        </h2>
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+          <h2 class="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-2">
+            <i class="pi pi-shopping-bag text-merchant-primary" />
+            <span>Daftar Menu Pesanan ({{ displayedItems.length }} Menu)</span>
+          </h2>
+          <span class="text-xs font-bold text-slate-500">
+            Total {{ displayedItems.reduce((acc, i) => acc + Number(i.quantity || 0), 0) }} porsi/cup
+          </span>
+        </div>
 
         <div class="mt-4 overflow-x-auto">
           <table class="w-full text-left text-xs sm:text-sm">
             <thead>
               <tr class="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[11px]">
-                <th class="pb-3">Menu</th>
+                <th class="pb-3 pl-1">Menu</th>
                 <th class="pb-3 text-center">Jumlah</th>
                 <th class="pb-3 text-right">Harga Satuan</th>
-                <th class="pb-3 text-right">Subtotal</th>
+                <th class="pb-3 text-right pr-1">Subtotal</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
-              <tr v-for="item in booking.items" :key="item.id" class="text-slate-800">
-                <td class="py-3">
+              <tr v-for="item in displayedItems" :key="item.id" class="text-slate-800 hover:bg-slate-50/50 transition">
+                <td class="py-3 pl-1">
                   <div class="flex items-center gap-1.5 flex-wrap">
                     <p class="font-bold text-slate-900">{{ item.product_name }}</p>
-                    <!-- Aksen warna brand merchant-primary -->
                     <span
                       v-if="item.variant_label"
                       class="rounded-md bg-merchant-primary/10 border border-merchant-primary/20 px-2 py-0.5 text-[10px] font-bold text-merchant-primary"
@@ -780,21 +844,25 @@ const handlePrintBookingReceipt = async (selectedPayment = null) => {
                     * {{ item.notes }}
                   </p>
                 </td>
-                <td class="py-3 text-center font-black">
-                  {{ item.quantity }}
+                <td class="py-3 text-center font-bold text-slate-800">
+                  {{ item.quantity }} cup/porsi
                 </td>
-                <td class="py-3 text-right text-slate-500">
+                <td class="py-3 text-right text-slate-500 font-mono">
                   {{ formatRupiah(item.unit_price) }}
                 </td>
-                <td class="py-3 text-right font-black text-slate-900">
+                <td class="py-3 text-right font-black text-slate-900 font-mono pr-1">
                   {{ formatRupiah(item.subtotal) }}
                 </td>
               </tr>
             </tbody>
             <tfoot>
-              <tr class="border-t border-slate-200 font-bold text-slate-900">
-                <td colspan="3" class="pt-3 text-right">Total Standar Katalog:</td>
-                <td class="pt-3 text-right font-black">{{ formatRupiah(normalTotal) }}</td>
+              <tr v-if="normalTotal !== customTotal" class="border-t border-slate-200 font-bold text-slate-700">
+                <td colspan="3" class="pt-3 text-right text-xs uppercase tracking-wider text-slate-500">Total Normal Katalog:</td>
+                <td class="pt-3 text-right font-mono font-bold text-slate-800 pr-1">{{ formatRupiah(normalTotal) }}</td>
+              </tr>
+              <tr class="border-t border-slate-200 font-black text-slate-900">
+                <td colspan="3" class="pt-2 text-right text-xs uppercase tracking-wider text-merchant-primary">Total Tagihan:</td>
+                <td class="pt-2 text-right font-mono font-black text-merchant-primary text-base pr-1">{{ formatRupiah(customTotal) }}</td>
               </tr>
             </tfoot>
           </table>
