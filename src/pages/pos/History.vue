@@ -204,11 +204,19 @@ const submitCancelRequest = async () => {
 }
 
 const search = ref('')
-const statusFilter = ref('')
+const statusFilter = ref('completed') // Default: 'completed' (pesanan batal disembunyikan secara default)
 const tipeFilter = ref('')
 const metodeFilter = ref('')
 const sortBy = ref('time_desc')
 const showFilters = ref(false)
+
+const completedCount = computed(() => {
+  return orderStore.orders.filter(o => o.status === 'completed').length
+})
+
+const cancelledCount = computed(() => {
+  return orderStore.orders.filter(o => o.status === 'cancelled').length
+})
 
 const filteredOrders = computed(() => {
   let list = orderStore.orders.filter(o => ['completed', 'cancelled'].includes(o.status))
@@ -258,6 +266,52 @@ const filteredOrders = computed(() => {
 
     <!-- Filters Section -->
     <div class="flex flex-col gap-3">
+      <!-- Quick Status Tabs -->
+      <div class="flex gap-1.5 bg-slate-100 p-1 rounded-2xl border border-slate-200/60">
+        <button
+          type="button"
+          @click="statusFilter = 'completed'"
+          :class="[
+            'flex-1 rounded-xl py-2 px-3 text-xs md:text-sm font-bold transition flex items-center justify-center gap-1.5',
+            statusFilter === 'completed'
+              ? 'bg-white text-emerald-700 shadow-sm'
+              : 'text-slate-500 hover:text-slate-800'
+          ]"
+        >
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span>Selesai</span>
+          <span class="text-[10px] bg-slate-200/80 px-1.5 py-0.5 rounded-full font-medium text-slate-600">{{ completedCount }}</span>
+        </button>
+
+        <button
+          type="button"
+          @click="statusFilter = ''"
+          :class="[
+            'flex-1 rounded-xl py-2 px-3 text-xs md:text-sm font-bold transition flex items-center justify-center gap-1.5',
+            statusFilter === ''
+              ? 'bg-white text-slate-800 shadow-sm'
+              : 'text-slate-500 hover:text-slate-800'
+          ]"
+        >
+          <span>Semua</span>
+        </button>
+
+        <button
+          type="button"
+          @click="statusFilter = 'cancelled'"
+          :class="[
+            'flex-1 rounded-xl py-2 px-3 text-xs md:text-sm font-bold transition flex items-center justify-center gap-1.5',
+            statusFilter === 'cancelled'
+              ? 'bg-white text-rose-700 shadow-sm'
+              : 'text-slate-500 hover:text-slate-800'
+          ]"
+        >
+          <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+          <span>Batal</span>
+          <span v-if="cancelledCount > 0" class="text-[10px] bg-rose-100 px-1.5 py-0.5 rounded-full font-bold text-rose-700">{{ cancelledCount }}</span>
+        </button>
+      </div>
+
       <div class="flex gap-2">
         <div class="relative flex-1">
           <i class="pi pi-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
@@ -328,12 +382,20 @@ const filteredOrders = computed(() => {
       <div
         v-for="order in filteredOrders"
         :key="order.id"
-        class="glass-card flex flex-col overflow-hidden"
+        class="glass-card flex flex-col overflow-hidden transition-all"
+        :class="order.status === 'cancelled'
+          ? 'bg-slate-100/90 border border-dashed border-slate-300 shadow-none opacity-60'
+          : 'bg-white shadow-sm border border-slate-100'"
       >
         <div class="flex items-start justify-between border-b border-slate-100 p-3 md:p-4 gap-2">
           <div class="flex-1">
             <div class="flex flex-wrap items-center gap-1.5 md:gap-2">
-              <span class="text-sm md:text-base font-bold text-slate-900">{{ order.order_number }}</span>
+              <span
+                class="text-sm md:text-base font-bold"
+                :class="order.status === 'cancelled' ? 'text-slate-400 line-through' : 'text-slate-900'"
+              >
+                {{ order.order_number }}
+              </span>
               <span
                 class="rounded-lg px-2 py-0.5 text-[9px] md:text-[10px] font-black uppercase tracking-wider"
                 :class="getStatusBadge(order.status).class"
@@ -343,7 +405,7 @@ const filteredOrders = computed(() => {
               <span
                 v-if="order.payment_method"
                 class="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[9px] md:text-[10px] font-black uppercase tracking-wider"
-                :class="order.payment_method === 'cash' ? 'bg-emerald-50 text-emerald-700' : (order.payment_method === 'qris' ? 'bg-violet-50 text-violet-700' : 'bg-slate-100 text-slate-600')"
+                :class="order.status === 'cancelled' ? 'bg-slate-200/80 text-slate-500' : (order.payment_method === 'cash' ? 'bg-emerald-50 text-emerald-700' : (order.payment_method === 'qris' ? 'bg-violet-50 text-violet-700' : 'bg-slate-100 text-slate-600'))"
               >
                 <i :class="order.payment_method === 'cash' ? 'pi pi-money-bill' : (order.payment_method === 'qris' ? 'pi pi-qrcode' : 'pi pi-credit-card')" class="text-[8px] md:text-[9px]" />
                 {{ order.payment_method === 'cash' ? 'Tunai' : (order.payment_method === 'qris' ? 'QRIS' : order.payment_method) }}
@@ -362,18 +424,44 @@ const filteredOrders = computed(() => {
                 Menunggu Persetujuan Batal
               </span>
             </div>
-            <p class="text-[10px] md:text-xs text-slate-500 mt-1">{{ dayjs(order.created_at).format('DD MMM YYYY, HH:mm') }}</p>
-            <p class="text-xs md:text-sm font-semibold mt-1">Pelanggan: {{ order.customer_name || 'Kopirex' }}</p>
+            <p class="text-[10px] md:text-xs text-slate-400 mt-1">{{ dayjs(order.created_at).format('DD MMM YYYY, HH:mm') }}</p>
+            <p
+              class="text-xs md:text-sm font-semibold mt-1"
+              :class="order.status === 'cancelled' ? 'text-slate-400 line-through' : 'text-slate-800'"
+            >
+              Pelanggan: {{ order.customer_name || 'Kopirex' }}
+            </p>
           </div>
           <div class="text-right shrink-0">
-            <p class="text-sm md:text-base font-bold text-merchant-primary">{{ formatRupiah(order.total_amount) }}</p>
+            <p
+              class="text-sm md:text-base font-bold"
+              :class="order.status === 'cancelled' ? 'text-slate-400 line-through' : 'text-merchant-primary'"
+            >
+              {{ formatRupiah(order.total_amount) }}
+            </p>
             <p class="text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
               {{ order.order_type === 'dine_in' ? `DINE IN — ${order.table?.table_number ?? '-'}` : 'TAKE AWAY' }}
             </p>
           </div>
         </div>
 
-        <div class="flex items-center gap-1.5 md:gap-2 border-t border-slate-100 p-2 md:p-3 bg-white">
+        <!-- Action bar jika dibatalkan -->
+        <div v-if="order.status === 'cancelled'" class="flex items-center justify-between border-t border-slate-200/80 p-2 md:p-3 bg-slate-50/70">
+          <span class="text-[10px] md:text-xs text-rose-600 font-bold italic flex items-center gap-1.5">
+            <i class="pi pi-times-circle text-xs md:text-sm text-rose-500" />
+            Pesanan Dibatalkan
+          </span>
+          <button 
+            type="button" 
+            @click="openDetailModal(order)"
+            class="flex items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 transition shadow-sm"
+          >
+            <i class="pi pi-eye mr-1" /> Detail
+          </button>
+        </div>
+
+        <!-- Action bar normal jika selesai -->
+        <div v-else class="flex items-center gap-1.5 md:gap-2 border-t border-slate-100 p-2 md:p-3 bg-white">
           <button 
             type="button" 
             @click="openDetailModal(order)"

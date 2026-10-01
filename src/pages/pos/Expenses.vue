@@ -82,7 +82,9 @@ const totalExpenses = computed(() => {
   const list = filterType.value === 'all'
     ? expenses.value
     : expenses.value.filter(e => e.type === filterType.value)
-  return list.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0)
+  return list
+    .filter(e => e.status !== 'cancelled')
+    .reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0)
 })
 
 const amountPreview = computed(() => {
@@ -115,7 +117,7 @@ const sortBy = ref('time_desc')
 const showFilters = ref(false)
 
 const filteredExpenses = computed(() => {
-  let list = [...expenses.value]
+  let list = expenses.value.filter(e => e.status !== 'cancelled')
   
   if (filterSearch.value) {
     const q = filterSearch.value.toLowerCase()
@@ -146,7 +148,7 @@ const loadData = async () => {
       fetchExpenseCategories(),
       fetchCriticalIngredients(),
     ])
-    expenses.value = expensesData
+    expenses.value = (expensesData || []).filter(e => e.status !== 'cancelled')
     // categoriesData sekarang array of {name, type}
     categories.value = categoriesData.map((c) => ({
       label: c.name ?? c,
@@ -639,7 +641,7 @@ onMounted(() => {
                 </div>
                 <div class="flex flex-col items-end gap-2">
                   <span class="text-sm md:text-base font-black text-rose-500">{{ formatRupiah(exp.amount) }}</span>
-                  <div class="flex gap-2" v-if="!exp.edit_status">
+                  <div class="flex gap-2" v-if="exp.status !== 'cancelled' && !exp.edit_status">
                     <button @click="openEditModal(exp)" class="flex flex-1 items-center justify-center rounded-xl bg-amber-50 px-3 py-1.5 text-[10px] font-bold text-amber-600 transition hover:bg-amber-100 active:scale-95" title="Ajukan Edit">
                       <i class="pi pi-pencil sm:mr-1" /> <span class="hidden sm:inline">Edit</span>
                     </button>
@@ -647,6 +649,9 @@ onMounted(() => {
                       <i class="pi pi-trash sm:mr-1" /> <span class="hidden sm:inline">Batal</span>
                     </button>
                   </div>
+                  <span v-else-if="exp.status === 'cancelled'" class="text-[10px] font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded border border-rose-100 uppercase">
+                    Dibatalkan
+                  </span>
                   <span v-else class="text-[10px] font-bold text-amber-500 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 uppercase">
                     Menunggu Review
                   </span>
