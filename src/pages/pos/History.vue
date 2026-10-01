@@ -209,17 +209,27 @@ const tipeFilter = ref('')
 const metodeFilter = ref('')
 const sortBy = ref('time_desc')
 const showFilters = ref(false)
+const todayDate = dayjs().format('YYYY-MM-DD')
+const dateFilter = ref(todayDate) // Otomatis filter di hari itu saja
+
+const dayOrders = computed(() => {
+  if (!dateFilter.value) return orderStore.orders
+  return orderStore.orders.filter(o => {
+    if (!o.created_at) return true
+    return dayjs(o.created_at).format('YYYY-MM-DD') === dateFilter.value
+  })
+})
 
 const completedCount = computed(() => {
-  return orderStore.orders.filter(o => o.status === 'completed').length
+  return dayOrders.value.filter(o => o.status === 'completed').length
 })
 
 const cancelledCount = computed(() => {
-  return orderStore.orders.filter(o => o.status === 'cancelled').length
+  return dayOrders.value.filter(o => o.status === 'cancelled').length
 })
 
 const filteredOrders = computed(() => {
-  let list = orderStore.orders.filter(o => ['completed', 'cancelled'].includes(o.status))
+  let list = dayOrders.value.filter(o => ['completed', 'cancelled'].includes(o.status))
   
   if (search.value) {
     const q = search.value.toLowerCase()
@@ -266,6 +276,32 @@ const filteredOrders = computed(() => {
 
     <!-- Filters Section -->
     <div class="flex flex-col gap-3">
+      <!-- Date Indicator & Quick Select -->
+      <div class="flex items-center justify-between px-1 text-xs text-slate-500">
+        <div class="flex items-center gap-1.5 font-semibold">
+          <i class="pi pi-calendar text-merchant-primary text-xs" />
+          <span>{{ dateFilter ? (dateFilter === todayDate ? 'Hari ini (' + dayjs(dateFilter).format('DD MMM YYYY') + ')' : dayjs(dateFilter).format('DD MMM YYYY')) : 'Semua Tanggal' }}</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button
+            v-if="dateFilter !== todayDate"
+            type="button"
+            @click="dateFilter = todayDate"
+            class="text-merchant-primary font-bold hover:underline cursor-pointer"
+          >
+            Hari Ini
+          </button>
+          <button
+            v-if="dateFilter"
+            type="button"
+            @click="dateFilter = ''"
+            class="text-slate-400 font-medium hover:text-slate-600 hover:underline cursor-pointer"
+          >
+            Semua Hari
+          </button>
+        </div>
+      </div>
+
       <!-- Quick Status Tabs -->
       <div class="flex gap-1.5 bg-slate-100 p-1 rounded-2xl border border-slate-200/60">
         <button
@@ -332,28 +368,49 @@ const filteredOrders = computed(() => {
         </button>
       </div>
 
-      <div v-show="showFilters" class="grid grid-cols-2 gap-3 sm:grid-cols-4 bg-white p-3 md:p-4 rounded-xl border border-slate-100 shadow-sm">
-        <select v-model="sortBy" class="rounded-xl border border-slate-200 px-3 py-2 text-xs md:text-sm focus:border-merchant-primary focus:outline-none">
-          <option value="time_desc">Terbaru</option>
-          <option value="time_asc">Terlama</option>
-          <option value="total_desc">Total Tertinggi</option>
-          <option value="total_asc">Total Terendah</option>
-        </select>
-        <select v-model="statusFilter" class="rounded-xl border border-slate-200 px-3 py-2 text-xs md:text-sm focus:border-merchant-primary focus:outline-none">
-          <option value="">Semua Status</option>
-          <option value="completed">Selesai</option>
-          <option value="cancelled">Batal</option>
-        </select>
-        <select v-model="tipeFilter" class="rounded-xl border border-slate-200 px-3 py-2 text-xs md:text-sm focus:border-merchant-primary focus:outline-none">
-          <option value="">Semua Tipe</option>
-          <option value="dine_in">Dine In</option>
-          <option value="take_away">Take Away</option>
-        </select>
-        <select v-model="metodeFilter" class="rounded-xl border border-slate-200 px-3 py-2 text-xs md:text-sm focus:border-merchant-primary focus:outline-none">
-          <option value="">Semua Metode</option>
-          <option value="cash">Tunai</option>
-          <option value="qris">QRIS</option>
-        </select>
+      <div v-show="showFilters" class="grid grid-cols-2 gap-3 sm:grid-cols-5 bg-white p-3 md:p-4 rounded-xl border border-slate-100 shadow-sm">
+        <div class="flex flex-col gap-1">
+          <label class="text-[10px] font-bold text-slate-400 uppercase">Tanggal</label>
+          <input
+            v-model="dateFilter"
+            type="date"
+            class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs md:text-sm focus:border-merchant-primary focus:outline-none"
+            title="Filter Tanggal"
+          />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-[10px] font-bold text-slate-400 uppercase">Urutan</label>
+          <select v-model="sortBy" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs md:text-sm focus:border-merchant-primary focus:outline-none">
+            <option value="time_desc">Terbaru</option>
+            <option value="time_asc">Terlama</option>
+            <option value="total_desc">Total Tertinggi</option>
+            <option value="total_asc">Total Terendah</option>
+          </select>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-[10px] font-bold text-slate-400 uppercase">Status</label>
+          <select v-model="statusFilter" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs md:text-sm focus:border-merchant-primary focus:outline-none">
+            <option value="">Semua Status</option>
+            <option value="completed">Selesai</option>
+            <option value="cancelled">Batal</option>
+          </select>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-[10px] font-bold text-slate-400 uppercase">Tipe</label>
+          <select v-model="tipeFilter" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs md:text-sm focus:border-merchant-primary focus:outline-none">
+            <option value="">Semua Tipe</option>
+            <option value="dine_in">Dine In</option>
+            <option value="take_away">Take Away</option>
+          </select>
+        </div>
+        <div class="flex flex-col gap-1 col-span-2 sm:col-span-1">
+          <label class="text-[10px] font-bold text-slate-400 uppercase">Metode</label>
+          <select v-model="metodeFilter" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs md:text-sm focus:border-merchant-primary focus:outline-none">
+            <option value="">Semua Metode</option>
+            <option value="cash">Tunai</option>
+            <option value="qris">QRIS</option>
+          </select>
+        </div>
       </div>
     </div>
 

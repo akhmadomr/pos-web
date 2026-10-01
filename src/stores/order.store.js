@@ -17,11 +17,11 @@ export const useOrderStore = defineStore('order', () => {
     orders.value.filter((o) => o.status === 'completed'),
   )
 
-  async function fetchOrders() {
+  async function fetchOrders(params = {}) {
     loading.value = true
     error.value = null
     try {
-      const result = await ordersApi.fetchOrders()
+      const result = await ordersApi.fetchOrders(params)
       const serverOrders = Array.isArray(result) ? result : result.data ?? []
       
       // Cache ke IndexedDB untuk offline
