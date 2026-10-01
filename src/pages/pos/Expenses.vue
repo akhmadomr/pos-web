@@ -429,7 +429,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex h-[calc(100vh-5.5rem)] min-h-[500px] flex-col lg:h-[calc(100vh-10.5rem)] pb-20 lg:pb-0">
+  <div class="flex flex-col min-h-screen lg:h-[calc(100vh-10.5rem)] lg:min-h-0 pb-20 lg:pb-0">
     <div class="mb-3 md:mb-4">
       <h2 class="text-lg md:text-xl font-black text-slate-900">Pengeluaran Shift</h2>
       <p class="text-xs md:text-sm text-slate-500">Catat pengeluaran operasional selama shift berlangsung.</p>
@@ -438,7 +438,7 @@ onMounted(() => {
     <AppAlert v-if="error" type="error" :message="error" class="mb-4" dismissible @dismiss="error = ''" />
     <AppAlert v-if="successMessage" type="success" :message="successMessage" class="mb-4" dismissible @dismiss="successMessage = ''" />
 
-    <div class="grid flex-1 gap-4 md:gap-6 min-h-0 lg:grid-cols-5 overflow-y-auto lg:overflow-visible pb-4 lg:pb-0">
+    <div class="grid flex-1 gap-4 md:gap-6 min-h-0 lg:grid-cols-5 lg:overflow-visible pb-4 lg:pb-0">
       <!-- Form Input -->
       <section class="flex flex-col shrink-0 lg:col-span-2">
         <div class="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
@@ -468,7 +468,6 @@ onMounted(() => {
                     class="rounded-md px-2.5 py-1 text-[10px] md:text-xs font-bold transition flex items-center gap-1"
                     :class="priceMode === 'unit' ? 'bg-white text-merchant-primary shadow-sm' : 'text-slate-500 hover:text-slate-800'"
                   >
-                    <i class="pi pi-tag text-[9px] md:text-[10px]" />
                     <span>Harga Satuan</span>
                   </button>
                   <button
@@ -477,7 +476,6 @@ onMounted(() => {
                     class="rounded-md px-2.5 py-1 text-[10px] md:text-xs font-bold transition flex items-center gap-1"
                     :class="priceMode === 'total' ? 'bg-white text-merchant-primary shadow-sm' : 'text-slate-500 hover:text-slate-800'"
                   >
-                    <i class="pi pi-calculator text-[9px] md:text-[10px]" />
                     <span>Harga Total</span>
                   </button>
                 </div>
@@ -546,7 +544,7 @@ onMounted(() => {
                 v-model="form.notes"
                 type="text"
                 class="w-full rounded-xl border border-slate-200 px-3 py-2 md:py-2.5 text-xs md:text-sm font-medium focus:border-merchant-primary focus:outline-none focus:ring-2 focus:ring-merchant-primary/20"
-                placeholder="Contoh: Beli di pasar induk, bon terlampir..."
+                placeholder="Contoh: Merekk biasanya habis..."
               />
             </div>
             
@@ -564,7 +562,7 @@ onMounted(() => {
       </section>
 
       <!-- History List -->
-      <section class="flex flex-col min-h-0 lg:col-span-3">
+      <section class="flex flex-col lg:min-h-0 lg:col-span-3">
         <div class="flex flex-col h-full rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div class="border-b border-slate-100 p-3 md:p-4 flex items-center justify-between bg-slate-50/50">
             <h3 class="text-[10px] md:text-sm font-bold uppercase tracking-wider text-slate-400">Riwayat Pengeluaran</h3>
@@ -616,7 +614,7 @@ onMounted(() => {
             </div>
           </div>
           
-          <div class="flex-1 overflow-y-auto p-3 md:p-4 relative">
+          <div class="flex-1 lg:overflow-y-auto p-3 md:p-4 relative">
             <div v-if="loading" class="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
               <i class="pi pi-spin pi-spinner text-2xl md:text-3xl text-merchant-primary" />
             </div>
@@ -720,7 +718,6 @@ onMounted(() => {
                 class="rounded-md px-2.5 py-1 text-xs font-bold transition flex items-center gap-1"
                 :class="editPriceMode === 'unit' ? 'bg-white text-merchant-primary shadow-sm' : 'text-slate-500 hover:text-slate-800'"
               >
-                <i class="pi pi-tag text-[10px]" />
                 <span>Harga Satuan</span>
               </button>
               <button
@@ -729,7 +726,6 @@ onMounted(() => {
                 class="rounded-md px-2.5 py-1 text-xs font-bold transition flex items-center gap-1"
                 :class="editPriceMode === 'total' ? 'bg-white text-merchant-primary shadow-sm' : 'text-slate-500 hover:text-slate-800'"
               >
-                <i class="pi pi-calculator text-[10px]" />
                 <span>Harga Total</span>
               </button>
             </div>
